@@ -140,17 +140,23 @@ pub fn resolve_base_url(from_credential: &str) -> String {
     trim_url(from_credential).unwrap_or_else(|| DEFAULT_BASE_URL.to_string())
 }
 
-/// `~/Library/Application Support/publik/apps/gspot.json` (the convention
-/// file Iris and the other publik apps share).
+/// `~/Library/Application Support/publik/apps` on macOS (the convention folder
+/// Iris and the other publik apps share); `%APPDATA%\publik\apps` elsewhere.
+fn apps_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let base = PathBuf::from(std::env::var("HOME").ok()?).join("Library/Application Support");
+    #[cfg(not(target_os = "macos"))]
+    let base = dirs::data_dir()?;
+    Some(base.join("publik").join("apps"))
+}
+
 pub fn credential_path() -> Option<PathBuf> {
-    let home = std::env::var("HOME").ok()?;
-    Some(PathBuf::from(home).join("Library/Application Support/publik/apps").join(format!("{APP_SLUG}.json")))
+    Some(apps_dir()?.join(format!("{APP_SLUG}.json")))
 }
 
 /// Credential file written by builds that shipped under the old slug `grammarlama`.
 fn legacy_credential_path() -> Option<PathBuf> {
-    let home = std::env::var("HOME").ok()?;
-    Some(PathBuf::from(home).join("Library/Application Support/publik/apps/grammarlama.json"))
+    Some(apps_dir()?.join("grammarlama.json"))
 }
 
 /// The key in force: `PUBLIK_API_KEY` in the environment, else the credential file.
@@ -187,18 +193,34 @@ pub fn read_credential() -> Option<Credential> {
     Some(c)
 }
 
+/// Owner-only on Unix (0600 file, 0700 folder). On Windows the file sits in the
+/// user's own profile folder, which other accounts cannot read by default.
 pub fn write_credential(c: &Credential) -> anyhow::Result<()> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let path = credential_path().ok_or_else(|| anyhow::anyhow!("no home directory"))?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
-        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+        }
     }
     let json = serde_json::to_string_pretty(c)?;
-    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&path)?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(&path)?;
     use std::io::Write;
     f.write_all(json.as_bytes())?;
-    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
     Ok(())
 }
 
@@ -399,7 +421,7 @@ pub async fn provision(install_id: Option<String>) -> Result<Credential, PublikE
             "app_token": token,
             "app_slug": APP_SLUG,
             "app_version": env!("CARGO_PKG_VERSION"),
-            "os": "macos",
+            "os": std::env::consts::OS,
             "arch": arch_name(),
             "install_id": id,
             "disclosure_version": DISCLOSURE_VERSION,

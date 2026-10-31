@@ -85,4 +85,5 @@ export const Quill = (p: P) => (<svg {...base} {...p}><path d="M19 4c-6 0-10 4-1
 export const Sparkle = (p: P) => (<svg {...base} {...p}><path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z" fill="currentColor" stroke="none" /><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" fill="currentColor" stroke="none" /></svg>);
 export const Close = (p: P) => (<svg {...base} {...p}><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg>);
 export const Gear = (p: P) => (<svg {...base} {...p}><circle cx="12" cy="12" r="3" /><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" /></svg>);
+export const Briefcase = (p: P) => (<svg {...base} {...p}><rect x="3.5" y="7.5" width="17" height="12" rx="2" /><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5" /><path d="M3.5 12.5h17" /></svg>);
 export const Pencil = (p: P) => (<svg {...base} {...p}><path d="M14.5 4.5l5 5L8 21H3v-5z" /><path d="M12.5 6.5l5 5" /></svg>);

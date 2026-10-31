@@ -5,18 +5,20 @@ import { keyKind } from "../../lib/text";
 import type { LlmConfig, PublikStatus } from "../../lib/types";
 import * as I from "../../components/icons";
 
-type Choice = "publik" | "key";
+type Choice = "local" | "publik" | "key";
 
-/** Which card is on: publik API once its key exists, your own key once one is pasted, else none. */
+/** Which card is on: local AI once a model is picked, publik API once its key exists, your own key once one is pasted, else none. */
 function currentChoice(llm: LlmConfig, publik: PublikStatus): Choice | null {
+  if (llm.provider === "ollama") return llm.model.trim() ? "local" : null;
   if (llm.provider === "publik") return publik.has_key ? "publik" : null;
   return llm.api_key.trim().length > 0 ? "key" : null;
 }
 
 /**
- * The AI picker shared by onboarding and Settings. Two cards, no URLs or
- * ports: publik API (zero setup) and your own key (one field, provider
- * detected). The plumbing sits behind "Advanced". There is no local-model card.
+ * The AI picker shared by onboarding and Settings. Three cards, no URLs or
+ * ports: local AI (Ollama on this computer, private and free), publik API
+ * (zero setup) and your own key (one field, provider detected). The plumbing
+ * sits behind "Advanced".
  */
 export function AiSetup({ ctx, mode, onDone }: { ctx: Ctx; mode: "onboarding" | "settings"; onDone?: () => void }) {
   const llm = ctx.settings.llm;
@@ -57,6 +59,14 @@ export function AiSetup({ ctx, mode, onDone }: { ctx: Ctx; mode: "onboarding" | 
 
   return (
     <>
+      {/* Local AI */}
+      <button className={"choice" + (choice === "local" ? " selected" : "")} onClick={() => setOpen(open === "local" ? null : "local")}>
+        <div className="choice__title"><I.Shield style={{ width: 20, height: 20, color: "#2cc9b6" }} />Local AI (Ollama)<span className="choice__badge">Private · free</span></div>
+        <div className="choice__desc">Runs a model on this computer. Your words never leave it, and there is nothing to pay.</div>
+        {choice === "local" && <div className="choice__status">On · {llm.model}</div>}
+      </button>
+      {open === "local" && <LocalCard ctx={ctx} onDone={() => { setOpen(null); finish(); }} />}
+
       {/* publik API */}
       <button className={"choice" + (choice === "publik" ? " selected" : "")} onClick={() => { if (publik.has_key && choice !== "publik") turnOnPublik(); else setOpen(open === "publik" ? null : "publik"); }}>
         <div className="choice__title"><I.Sparkle style={{ width: 20, height: 20, color: "#2cc9b6" }} />publik API<span className="choice__badge">Recommended · no setup</span></div>
@@ -95,7 +105,7 @@ export function AiSetup({ ctx, mode, onDone }: { ctx: Ctx; mode: "onboarding" | 
             <button className="btn btn--primary" disabled={busy || !key.trim()} onClick={connectKey}>{busy ? "Checking the key…" : "Connect"}</button>
             <button className="btn btn--ghost" disabled={busy} onClick={() => { setOpen(null); setError(null); }}>Cancel</button>
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>The key stays on this Mac. GSpot lists your account's models and picks the best fit; change it under Advanced.</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>The key stays on this computer. GSpot lists your account's models and picks the best fit; change it under Advanced.</div>
         </div>
       )}
 
@@ -109,21 +119,66 @@ export function AiSetup({ ctx, mode, onDone }: { ctx: Ctx; mode: "onboarding" | 
         <summary>Advanced</summary>
         <div className="field"><label>Provider</label><div className="select-wrap"><select className="select" value={llm.provider} onChange={(e) => {
           const p = e.target.value as LlmConfig["provider"];
-          const base = p === "openai" ? "https://api.openai.com" : p === "anthropic" ? "https://api.anthropic.com" : "https://publikhq.com/api/v1";
-          const model = p === "openai" ? "gpt-4o-mini" : p === "anthropic" ? "claude-sonnet-5-5" : "publik-balanced";
+          const base = p === "ollama" ? "http://127.0.0.1:11434" : p === "openai" ? "https://api.openai.com" : p === "anthropic" ? "https://api.anthropic.com" : "https://publikhq.com/api/v1";
+          const model = p === "ollama" ? "" : p === "openai" ? "gpt-4o-mini" : p === "anthropic" ? "claude-sonnet-5-5" : "publik-balanced";
           ctx.updateSettings({ llm: { ...llm, provider: p, base_url: base, model } });
         }}>
-          <option value="publik">publik API</option><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic</option>
+          <option value="ollama">Ollama (local)</option><option value="publik">publik API</option><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic</option>
         </select></div></div>
         <AdvField label="Base URL" value={llm.base_url} onSave={(v) => ctx.updateSettings({ llm: { ...llm, base_url: v } })} />
         <AdvField label="Model" value={llm.model} onSave={(v) => ctx.updateSettings({ llm: { ...llm, model: v } })} />
-        {llm.provider !== "publik" && <AdvField label="API key" value={llm.api_key} secret onSave={(v) => ctx.updateSettings({ llm: { ...llm, api_key: v } })} />}
+        {llm.provider !== "publik" && llm.provider !== "ollama" && <AdvField label="API key" value={llm.api_key} secret onSave={(v) => ctx.updateSettings({ llm: { ...llm, api_key: v } })} />}
         <div className="row-actions">
           <button className="btn btn--outline" onClick={async () => { setPing("…"); try { const r = await ipc.runFeature<{ reply: string }>("ping_llm"); setPing(`OK: ${r.reply.slice(0, 40)}`); } catch (e) { setPing(String(e)); } }}>Test connection</button>
           {ping && <span style={{ color: "var(--text-subdued)", fontSize: 13, alignSelf: "center" }}>{ping}</span>}
         </div>
       </details>
     </>
+  );
+}
+
+type OllamaInfo = { running: boolean; base_url: string; models: string[]; pick: string | null };
+
+/** Local AI: find Ollama, list its models, switch to the chosen one. Without Ollama, say how to get it. */
+function LocalCard({ ctx, onDone }: { ctx: Ctx; onDone: () => void }) {
+  const [info, setInfo] = useState<OllamaInfo | null>(null);
+  const [model, setModel] = useState("");
+  const check = async () => {
+    setInfo(null);
+    const r = await ipc.runFeature<OllamaInfo>("detect_ollama").catch((): OllamaInfo => ({ running: false, base_url: "", models: [], pick: null }));
+    setInfo(r);
+    setModel(ctx.settings.llm.provider === "ollama" && r.models.includes(ctx.settings.llm.model) ? ctx.settings.llm.model : r.pick ?? "");
+  };
+  useEffect(() => { check(); }, []);
+  const use = async () => {
+    await ctx.updateSettings({ llm: { provider: "ollama", base_url: info?.base_url || "http://127.0.0.1:11434", api_key: "", model } });
+    ctx.toast(`Local AI on · ${model}`); onDone();
+  };
+  return (
+    <div className="card" style={{ marginTop: -4 }}>
+      {!info ? <div style={{ color: "var(--text-subdued)", fontSize: 14 }}>Looking for Ollama…</div>
+      : info.running ? (
+        <>
+          <div className="field"><label>Model</label><div className="select-wrap"><select className="select" value={model} onChange={(e) => setModel(e.target.value)}>
+            {info.models.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select></div></div>
+          <div className="row-actions">
+            <button className="btn btn--primary" disabled={!model} onClick={use}>Use {model || "this model"}</button>
+            <button className="btn btn--ghost" onClick={check}>Refresh</button>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>A 7–8B model (qwen2.5:7b, llama3.1:8b) gives the best suggestions; 3–4B models are faster on laptops.</div>
+        </>
+      ) : (
+        <>
+          <p style={{ color: "var(--text-subdued)", fontSize: 14, lineHeight: 1.5, margin: 0 }}>Ollama is not running on this computer. Install it, then pull a model in a terminal:</p>
+          <pre style={{ fontSize: 13, margin: "10px 0", padding: "8px 10px", background: "var(--bg-subdued, #2e2e2e)", borderRadius: 6 }}>ollama pull qwen2.5:7b</pre>
+          <div className="row-actions">
+            <button className="btn btn--primary" onClick={() => ipc.openUrl("https://ollama.com/download")}>Get Ollama</button>
+            <button className="btn btn--ghost" onClick={check}>Check again</button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

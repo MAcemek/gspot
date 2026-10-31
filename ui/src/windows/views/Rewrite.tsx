@@ -115,6 +115,50 @@ export function Humanizer({ ctx }: { ctx: Ctx }) {
   );
 }
 
+const CEO_LEVELS = [
+  { id: "polished", name: "Polished", desc: "Short and direct, still clean.", glyph: "scissors" },
+  { id: "casual", name: "Casual", desc: "Drops the last period, uses & and w/.", glyph: "cup" },
+  { id: "phone", name: "Sent from my phone", desc: "lower case, no apostrophes, thx & pls.", glyph: "bolt" },
+];
+
+export function CeoMode({ ctx }: { ctx: Ctx }) {
+  const f = useFeature<{ rewritten: string; cut: string[]; level: string; words_in: number; words_out: number; used_selection: boolean }>("ceo", ["Finding the ask", "Cutting the fluff", "Typing it like a CEO"]);
+  if (!ctx.doc) return <NoDoc ctx={ctx} />;
+  const src = ctx.doc.selected_text || ctx.doc.text;
+  const glyph = (g: string) => g === "scissors" ? <I.Scissors /> : g === "cup" ? <I.Cup /> : <I.Bolt />;
+  const level = CEO_LEVELS.find((l) => l.id === f.data?.level);
+  return (
+    <>
+      <div className="titlebar" style={{ justifyContent: "flex-start", paddingLeft: 16, gap: 10, fontSize: 17 }}><I.Briefcase style={{ width: 22, height: 22 }} /> Talk like a CEO
+        <div className="titlebar__actions"><button title="Reload" onClick={f.reset}><I.Refresh /></button></div>
+      </div>
+      <div className="panel__scroll">
+        {f.loading ? <Steps steps={["Finding the ask", "Cutting the fluff", "Typing it like a CEO"]} active={f.step} />
+        : f.error ? <div className="notice">{f.error}</div>
+        : f.data ? (
+          <>
+            <div className="section-label">{level?.name ?? "CEO"} · {f.data.words_in} → {f.data.words_out} words</div>
+            <RewriteResult ctx={ctx} original={src} rewritten={f.data.rewritten} usedSelection={f.data.used_selection} onBack={f.reset} />
+            {f.data.cut?.length ? <ul style={{ color: "var(--text-subdued)", fontSize: 14, paddingLeft: 18, marginTop: 14 }}>{f.data.cut.map((c, i) => <li key={i}>{c}</li>)}</ul> : null}
+          </>
+        ) : (
+          <>
+            <Hero icon={<I.Briefcase />} title="Talk like a CEO">
+              <p>{ctx.doc.selected_text ? "Cut the selection down to the ask, typed the way a busy exec would." : "Cut your message down to the ask, typed the way a busy exec would. Select a passage to rewrite just that."}</p>
+            </Hero>
+            <div className="section-label">How rough?</div>
+            {CEO_LEVELS.map((l) => (
+              <button key={l.id} className="card card--row" style={{ width: "100%", textAlign: "left" }} onClick={() => f.run({ level: l.id })}>
+                <span className="card__glyph">{glyph(l.glyph)}</span><span><div className="card__title">{l.name}</div><div className="card__desc">{l.desc}</div></span>
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function Reactions({ ctx }: { ctx: Ctx }) {
   const f = useFeature<{ too_short?: boolean; summary: string; remember: string[]; ask: { label: string; question: string }[]; audience: string }>("reactions", ["Reading as your audience", "Predicting reactions", "Writing questions"]);
   const [picking, setPicking] = useState(false);

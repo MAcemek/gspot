@@ -1,7 +1,7 @@
 //! The host loop: watches the focused text field of whatever app is in front,
 //! keeps the document model, runs the engine, and computes underline geometry.
 
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", windows))]
 
 use crate::ax::{self, AXElement, Rect};
 use crate::engine::{Alert, Engine};
@@ -29,6 +29,17 @@ pub const BUILT_IN_SKIP: &[&str] = &[
     "com.mitchellh.ghostty",
     "co.zeit.hyper",
     "com.apple.Console",
+    // Windows: the app id is the executable name.
+    "windowsterminal.exe",
+    "openconsole.exe",
+    "conhost.exe",
+    "cmd.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "wezterm-gui.exe",
+    "alacritty.exe",
+    "warp.exe",
+    "mintty.exe",
 ];
 
 pub fn built_in_skip(bundle_id: &str) -> bool {

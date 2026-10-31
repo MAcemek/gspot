@@ -27,7 +27,7 @@ export interface Score {
 export interface Voice { id: string; name: string; description: string; custom: boolean }
 export interface Audience { id: string; name: string; description: string; custom: boolean }
 
-/** "ollama" is set only by the e2e rig through the debug probe; the UI offers no local model. */
+/** "ollama" is the local model (Settings → AI → Local AI), the default in this build. */
 export type ProviderId = "ollama" | "openai" | "anthropic" | "publik";
 export interface LlmConfig { provider: ProviderId; base_url: string; api_key: string; model: string }
 export interface PublikSettings { disclosure_version: number; first_run_owed: boolean }
@@ -55,7 +55,7 @@ export interface Session { doc_id: string; app_name: string; bundle_id: string; 
 export interface AppState { doc: Doc | null; alerts: Alert[]; status: Status; settings: Settings; history: Session[]; score: Score | null; initials: string; publik: PublikStatus; spot_running: boolean }
 
 export type View =
-  | "review" | "chat" | "plagiarism" | "tone" | "performance" | "paraphraser" | "humanizer"
+  | "review" | "chat" | "plagiarism" | "tone" | "performance" | "paraphraser" | "humanizer" | "ceo"
   | "reactions" | "translate" | "explain" | "rewriter" | "detector" | "history" | "settings" | "onboarding";
 
 export interface UnderlineRect { id: string; x: number; y: number; w: number; h: number; color: string; category: string; sentence: boolean }

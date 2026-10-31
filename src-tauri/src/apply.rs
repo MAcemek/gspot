@@ -1,14 +1,12 @@
 //! The replacement ladder: AX selected-text set, then pasteboard patch, each
 //! verified by reading the field back (what Grammarly's TextCorruptionDetector does).
 
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", windows))]
 
 use crate::ax::{self, AXElement};
 use crate::textmap::{slice_utf16, splice_utf16};
 use anyhow::{anyhow, Result};
 use serde::Serialize;
-use std::os::raw::c_void;
-use std::ptr::null;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -25,25 +23,28 @@ pub struct ApplyResult {
     pub new_text: String,
 }
 
-type CGEventRef = *mut c_void;
-type CGEventSourceRef = *const c_void;
+#[cfg(target_os = "macos")]
+fn post_paste_keys() {
+    use std::os::raw::c_void;
+    use std::ptr::null;
+    type CGEventRef = *mut c_void;
+    type CGEventSourceRef = *const c_void;
 
-#[link(name = "CoreGraphics", kind = "framework")]
-extern "C" {
-    fn CGEventCreateKeyboardEvent(source: CGEventSourceRef, keycode: u16, keydown: bool) -> CGEventRef;
-    fn CGEventSetFlags(event: CGEventRef, flags: u64);
-    fn CGEventPost(tap: u32, event: CGEventRef);
-}
-#[link(name = "CoreFoundation", kind = "framework")]
-extern "C" {
-    fn CFRelease(cf: *const c_void);
-}
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGEventCreateKeyboardEvent(source: CGEventSourceRef, keycode: u16, keydown: bool) -> CGEventRef;
+        fn CGEventSetFlags(event: CGEventRef, flags: u64);
+        fn CGEventPost(tap: u32, event: CGEventRef);
+    }
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFRelease(cf: *const c_void);
+    }
 
-const KCG_HID_EVENT_TAP: u32 = 0;
-const KCG_FLAG_MASK_COMMAND: u64 = 0x0010_0000;
-const KEYCODE_V: u16 = 9;
+    const KCG_HID_EVENT_TAP: u32 = 0;
+    const KCG_FLAG_MASK_COMMAND: u64 = 0x0010_0000;
+    const KEYCODE_V: u16 = 9;
 
-fn post_cmd_v() {
     unsafe {
         let down = CGEventCreateKeyboardEvent(null(), KEYCODE_V, true);
         CGEventSetFlags(down, KCG_FLAG_MASK_COMMAND);
@@ -54,6 +55,18 @@ fn post_cmd_v() {
         CGEventPost(KCG_HID_EVENT_TAP, up);
         CFRelease(up as *const c_void);
     }
+}
+
+/// Ctrl+V through SendInput.
+#[cfg(windows)]
+fn post_paste_keys() {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_V};
+    let key = |vk: VIRTUAL_KEY, up: bool| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: vk, wScan: 0, dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) }, time: 0, dwExtraInfo: 0 } },
+    };
+    let inputs = [key(VK_CONTROL, false), key(VK_V, false), key(VK_V, true), key(VK_CONTROL, true)];
+    unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
 }
 
 fn verified(el: &AXElement, loc: usize, replacement: &str) -> Option<String> {
@@ -91,6 +104,13 @@ pub fn replace_range(el: &AXElement, pid: i32, loc: usize, len: usize, replaceme
         }
         // Rung 2: pasteboard patch (what Grammarly calls "hybrid replacements").
         if sel_ok || el.set_range("AXSelectedTextRange", loc, len).is_ok() {
+            #[cfg(windows)]
+            if !el.focus() {
+                ax::activate_app(pid);
+            }
+            #[cfg(windows)]
+            let _ = el.set_range("AXSelectedTextRange", loc, len);
+            #[cfg(target_os = "macos")]
             ax::activate_app(pid);
             sleep(Duration::from_millis(120));
             if paste_text(replacement).is_ok() {
@@ -109,6 +129,14 @@ pub fn replace_range(el: &AXElement, pid: i32, loc: usize, len: usize, replaceme
             }
         }
     }
+    // Rung 3 (Windows): a plain field with a writable Value takes the whole new text.
+    #[cfg(windows)]
+    if el.is_settable("AXValue") && el.set_string("AXValue", &expected).is_ok() {
+        sleep(Duration::from_millis(70));
+        if let Some(new_text) = verified(el, loc, replacement) {
+            return Ok(ApplyResult { method: Method::Ax, new_text });
+        }
+    }
     Err(anyhow!("This app did not accept the replacement. Try editing it directly."))
 }
 
@@ -118,7 +146,7 @@ fn paste_text(text: &str) -> Result<()> {
     let saved = cb.get_text().ok();
     cb.set_text(text.to_string())?;
     sleep(Duration::from_millis(60));
-    post_cmd_v();
+    post_paste_keys();
     sleep(Duration::from_millis(160));
     if let Some(prev) = saved {
         let _ = cb.set_text(prev);

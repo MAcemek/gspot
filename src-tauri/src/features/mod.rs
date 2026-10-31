@@ -1,5 +1,6 @@
 //! LLM-backed sidebar features. Each returns a JSON value the UI renders.
 
+pub mod ceo;
 pub mod detector;
 pub mod plagiarism;
 pub mod prompts;

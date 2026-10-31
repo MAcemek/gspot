@@ -25,15 +25,18 @@ pub struct LlmConfig {
 
 impl Default for LlmConfig {
     fn default() -> Self {
-        // publik API: zero setup, and when it is not set up its error says how to turn it on.
+        // Local AI first: a model running in Ollama on this computer. The model is
+        // picked in Settings → AI; until then the AI features say how to set it up.
         LlmConfig {
-            provider: Provider::Publik,
-            base_url: crate::publik::DEFAULT_BASE_URL.into(),
+            provider: Provider::Ollama,
+            base_url: OLLAMA_BASE_URL.into(),
             api_key: String::new(),
-            model: crate::publik::DEFAULT_MODEL.into(),
+            model: String::new(),
         }
     }
 }
+
+pub const OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Voice {
@@ -126,15 +129,21 @@ impl Default for Settings {
     }
 }
 
+/// The login name: `USER` on macOS, `USERNAME` on Windows.
+fn login_name() -> Result<String, std::env::VarError> {
+    std::env::var("USER").or_else(|_| std::env::var("USERNAME"))
+}
+
 fn default_user_name() -> String {
     // macOS keeps the account's full name ("Mann Bellani"); `id -F` prints it.
+    #[cfg(target_os = "macos")]
     if let Ok(out) = std::process::Command::new("id").arg("-F").output() {
         let full = String::from_utf8_lossy(&out.stdout).trim().to_string();
         if full.split_whitespace().count() >= 1 && full.len() <= 60 && !full.is_empty() {
             return full;
         }
     }
-    std::env::var("USER").map(|u| {
+    login_name().map(|u| {
         let mut c = u.chars();
         match c.next() {
             Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
@@ -175,25 +184,14 @@ pub fn load() -> Settings {
         Err(_) => Settings::default(),
     };
     migrate_user_name(&mut s);
-    migrate_local_model(&mut s);
     s
-}
-
-/// GSpot stopped offering a local model on Oct 18 2026. A settings file from an
-/// older build may still name Ollama; point it at the publik default, whose
-/// status says how to turn it on. The e2e rig sets Ollama back through the
-/// debug probe (`/settings`), which does not pass through here.
-fn migrate_local_model(s: &mut Settings) {
-    if s.llm.provider == Provider::Ollama {
-        s.llm = LlmConfig::default();
-    }
 }
 
 /// Older builds saved the capitalized login name ("Mannbellani") because they
 /// never asked the account for its full name. Replace that stale value with
 /// the full name so the avatar initials match the real account ("MB").
 fn migrate_user_name(s: &mut Settings) {
-    let login_fallback = std::env::var("USER").map(|u| {
+    let login_fallback = login_name().map(|u| {
         let mut c = u.chars();
         match c.next() {
             Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
@@ -227,7 +225,7 @@ mod tests {
 
     #[test]
     fn migrate_replaces_stale_login_name_but_keeps_custom_name() {
-        let login = std::env::var("USER").unwrap_or_default();
+        let login = login_name().unwrap_or_default();
         let mut c = login.chars();
         let stale = match c.next() {
             Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
@@ -263,17 +261,14 @@ mod tests {
     }
 
     #[test]
-    fn a_local_model_setting_migrates_to_publik_api() {
-        let mut s = Settings::default();
-        assert_eq!(s.llm.provider, Provider::Publik, "no local model by default");
-        s.llm = LlmConfig { provider: Provider::Ollama, base_url: "http://127.0.0.1:11434".into(), api_key: String::new(), model: "qwen2.5:7b".into() };
-        migrate_local_model(&mut s);
-        assert_eq!(s.llm.provider, Provider::Publik);
-        assert_eq!(s.llm.model, crate::publik::DEFAULT_MODEL);
-        let mut own = Settings::default();
-        own.llm = LlmConfig { provider: Provider::OpenAI, base_url: "https://api.openai.com".into(), api_key: "sk-x".into(), model: "gpt-4o-mini".into() };
-        migrate_local_model(&mut own);
-        assert_eq!(own.llm.provider, Provider::OpenAI, "an own key is left alone");
+    fn local_ai_is_the_default_and_a_saved_local_model_is_kept() {
+        let s = Settings::default();
+        assert_eq!(s.llm.provider, Provider::Ollama, "local model by default");
+        assert_eq!(s.llm.base_url, OLLAMA_BASE_URL);
+        let saved = r#"{"llm":{"provider":"ollama","base_url":"http://127.0.0.1:11434","api_key":"","model":"qwen2.5:7b"}}"#;
+        let back: Settings = serde_json::from_str(saved).unwrap();
+        assert_eq!(back.llm.provider, Provider::Ollama);
+        assert_eq!(back.llm.model, "qwen2.5:7b");
     }
 
     #[test]

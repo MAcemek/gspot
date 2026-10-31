@@ -1,5 +1,32 @@
 # GSpot
 
+> **This is a fork of [blueturboguy07/gspot](https://github.com/blueturboguy07/gspot)** (AGPL-3.0) that adds:
+>
+> * **Windows support.** Text access goes through Windows UI Automation (`src-tauri/src/ax_win.rs`) in place of the
+>   macOS Accessibility API, answering the same calls so the host loop, engine and UI are shared.
+>   Replacements select the range and paste (Ctrl+V), then fall back to UIA `ValuePattern` for plain fields.
+> * **Local AI (Ollama)**, back as the default: every AI feature can run on a model on your own computer,
+>   free and private. Settings → AI → Local AI lists the models Ollama has; publik API and your own key still work.
+> * **Talk like a CEO**: cuts a message down to the ask, then types it the way a busy exec would
+>   (Polished, Casual, or "Sent from my phone"). The model only shortens; the rough edges are added by a
+>   deterministic pass (`src-tauri/src/features/ceo.rs`), so names and numbers are never mangled.
+> * Small hardening: `open_url` only opens `http(s)` links.
+>
+> ### Windows quick start
+>
+> ```powershell
+> # prerequisites: Rust (rustup), Node 20+, pnpm, Visual Studio C++ Build Tools, WebView2 (built into Windows 11)
+> pnpm install
+> pnpm dev          # run with hot reload
+> pnpm build        # installer in src-tauri/target/release/bundle/nsis
+> ```
+>
+> For AI features, install [Ollama](https://ollama.com/download), run `ollama pull qwen2.5:7b`, and pick the model
+> under Settings → AI → Local AI. Spelling and grammar (Harper) work offline without any of that.
+>
+> Windows support is new: plain editors (Notepad, WordPad, standard text boxes) work best; browsers, Electron apps and
+> Word vary by app. Use "Skip this app" for any app where underlines land in the wrong place, and please open an issue.
+
 ![GSpot beside a TextEdit draft: the Review panel lists the suggestions, the draft is underlined in place, and a card offers the fix](docs/hero.png)
 
 A local-first, open-source Grammarly-style writing assistant for macOS. A floating panel docked to the

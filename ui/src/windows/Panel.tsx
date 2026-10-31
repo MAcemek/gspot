@@ -6,7 +6,7 @@ import { Review } from "./views/Review";
 import { Chat } from "./views/Chat";
 import { Performance } from "./views/Performance";
 import { Tone } from "./views/Tone";
-import { Paraphraser, Humanizer, Reactions } from "./views/Rewrite";
+import { Paraphraser, Humanizer, CeoMode, Reactions } from "./views/Rewrite";
 import { Translate, Explain, Rewriter, Detector, Plagiarism } from "./views/Analyze";
 import { History, SettingsView } from "./views/Misc";
 import { Onboarding } from "./views/Onboarding";
@@ -25,6 +25,7 @@ const RAIL: { id: View; label: string; Icon: (p: any) => JSX.Element }[] = [
   { id: "performance", label: "Performance Score", Icon: I.Target },
   { id: "paraphraser", label: "Paraphraser", Icon: I.Paraphrase },
   { id: "humanizer", label: "Humanizer", Icon: I.Heart },
+  { id: "ceo", label: "Talk like a CEO", Icon: I.Briefcase },
   { id: "reactions", label: "Reader Reactions", Icon: I.Book },
   { id: "translate", label: "Translate", Icon: I.Translate },
   { id: "explain", label: "Explain It", Icon: I.Glasses },
@@ -136,6 +137,7 @@ function ViewSwitch({ ctx }: { ctx: Ctx }) {
     case "performance": return <Performance ctx={ctx} />;
     case "paraphraser": return <Paraphraser ctx={ctx} />;
     case "humanizer": return <Humanizer ctx={ctx} />;
+    case "ceo": return <CeoMode ctx={ctx} />;
     case "reactions": return <Reactions ctx={ctx} />;
     case "translate": return <Translate ctx={ctx} />;
     case "explain": return <Explain ctx={ctx} />;

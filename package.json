@@ -1,11 +1,11 @@
 {
   "name": "gspot",
   "private": true,
-  "description": "Local-first Grammarly-style writing assistant for macOS",
+  "description": "Local-first Grammarly-style writing assistant for macOS and Windows",
   "scripts": {
     "postinstall": "pnpm --dir ui install",
-    "dev": "cd src-tauri && ../ui/node_modules/.bin/tauri dev",
-    "build": "cd src-tauri && ../ui/node_modules/.bin/tauri build",
+    "dev": "cd src-tauri && node ../ui/node_modules/@tauri-apps/cli/tauri.js dev",
+    "build": "cd src-tauri && node ../ui/node_modules/@tauri-apps/cli/tauri.js build",
     "test": "pnpm --dir ui test"
   }
 }

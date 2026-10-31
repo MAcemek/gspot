@@ -3,6 +3,7 @@
 
 pub mod aiphrases;
 pub mod apply;
+#[cfg_attr(windows, path = "ax_win.rs")]
 pub mod ax;
 pub mod commands;
 pub mod debug_server;

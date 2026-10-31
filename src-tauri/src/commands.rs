@@ -135,7 +135,12 @@ pub fn effective_llm(settings: &Settings) -> Result<LlmConfig, String> {
             let cred = crate::publik::read_credential().ok_or("publik API is not set up on this computer yet. Open Settings → AI to turn it on, or paste your own key.")?;
             Ok(LlmConfig { provider: Provider::Publik, base_url: cred.base_url.clone(), api_key: cred.key.clone(), model: if settings.llm.model.trim().is_empty() { cred.model.clone() } else { settings.llm.model.clone() } })
         }
-        Provider::Ollama => Ok(settings.llm.clone()),
+        Provider::Ollama => {
+            if settings.llm.model.trim().is_empty() {
+                return Err("Local AI is not set up yet. Open Settings → AI → Local AI (Ollama) and pick a model.".into());
+            }
+            Ok(settings.llm.clone())
+        }
         _ => {
             if settings.llm.api_key.trim().is_empty() {
                 return Err("No API key yet. Open Settings → AI and paste your key, or turn on publik API.".into());
@@ -227,7 +232,7 @@ pub async fn run_feature_inner(app: &AppHandle, shared: &Shared, name: &str, arg
     let settings: Settings = shared.lock().unwrap().settings.clone();
     let llm_cfg = effective_llm(&settings);
     let cfg = llm_cfg.clone().unwrap_or_else(|_| settings.llm.clone());
-    let needs_llm = !matches!(name, "create_audience" | "rewriter_scan" | "plagiarism" | "score" | "spot_check");
+    let needs_llm = !matches!(name, "create_audience" | "rewriter_scan" | "plagiarism" | "score" | "spot_check" | "detect_ollama");
     if needs_llm {
         llm_cfg.clone()?;
     }
@@ -244,6 +249,13 @@ pub async fn run_feature_inner(app: &AppHandle, shared: &Shared, name: &str, arg
         "humanize" => {
             let (text, _, sel) = resolve_text(shared, &args)?;
             let mut v = features::humanize(&cfg, &text, args["voice_name"].as_str().unwrap_or("The Everyday Voice"), args["voice_description"].as_str().unwrap_or("")).await.map_err(err)?;
+            v["used_selection"] = json!(sel);
+            v
+        }
+        "detect_ollama" => detect_ollama_inner().await,
+        "ceo" => {
+            let (text, _, sel) = resolve_text(shared, &args)?;
+            let mut v = features::ceo::rewrite(&cfg, &text, args["level"].as_str().unwrap_or("casual")).await.map_err(err)?;
             v["used_selection"] = json!(sel);
             v
         }
@@ -444,7 +456,15 @@ pub fn set_card_rects(state: State<'_, Shared>, rects: Vec<crate::ax::Rect>) {
 
 #[tauri::command]
 pub fn open_url(url: String) {
+    // Web links only: never hand a file path or another scheme to the system opener.
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        log::warn!("open_url: refused a non-web url");
+        return;
+    }
+    #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(windows)]
+    let _ = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn();
 }
 
 #[tauri::command]
@@ -578,12 +598,12 @@ pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
     }))
 }
 
-/// Is a local Ollama running, and which model would the e2e rig use? Debug
-/// probe only (`/ollama`): the product offers no local model.
+/// Is a local Ollama running, which models does it have, and which one fits best?
+/// Backs the Local AI card in Settings and the debug probe (`/ollama`).
 pub async fn detect_ollama_inner() -> Value {
-    let base = "http://127.0.0.1:11434";
+    let base = crate::settings::OLLAMA_BASE_URL;
     let models = llm::ollama_models(base).await.unwrap_or_default();
-    let prefs = ["qwen2.5:7b", "qwen3:8b", "llama3.1:8b", "gemma3:4b", "qwen2.5:3b", "mistral:7b"];
+    let prefs = ["qwen2.5:7b", "qwen3:8b", "llama3.1:8b", "gemma3:4b", "llama3.2:3b", "qwen2.5:3b", "mistral:7b"];
     let pick = prefs
         .iter()
         .find(|p| models.iter().any(|m| m == *p))
