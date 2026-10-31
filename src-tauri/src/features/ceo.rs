@@ -1,4 +1,6 @@
-//! Talk like a CEO: the model cuts the message down to the ask, then a
+//! Talk like a CEO: the model cuts the message down to the ask, a fixed pass
+//! strips the fluff a small model tends to leave (greeting, "hope you're well",
+//! "let me know if you have questions", the sign-off line), then a
 //! deterministic pass roughens it the way a busy executive types (dropped
 //! periods, "&", "w/", lower-case starts, apostrophes skipped). The model never
 //! invents the imperfections, so it cannot slip a typo into a name or a number;
@@ -55,6 +57,60 @@ pub fn missing_numbers(original: &str, out: &str) -> Vec<String> {
         }
     }
     missing
+}
+
+fn greeting_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?i)\A\s*(hi|hello|hey|dear|good (morning|afternoon|evening))\b[^\n.!?]{0,40}[,!:]?[ \t]*(\n|\z)").unwrap())
+}
+
+/// Sentences that carry nothing: well-wishing and the "any questions" offer.
+fn filler_res() -> &'static [Regex] {
+    static RES: OnceLock<Vec<Regex>> = OnceLock::new();
+    RES.get_or_init(|| {
+        [
+            r"(?i)\bI hope (this|that|you|all|everyone)\b[^.!?\n]*\b(well|great|good|nice|weekend|week|day)\b[^.!?\n]*[.!?]*",
+            r"(?i)\b(please )?(do )?(let me know|feel free to (reach out|ask|let me know)|don't hesitate to (reach out|ask))\b[^.!?\n]*\bquestions?\b[^.!?\n]*[.!?]*",
+        ]
+        .iter()
+        .map(|p| Regex::new(p).unwrap())
+        .collect()
+    })
+}
+
+/// A closing "Thanks so much," / "Best regards," at the very end, with the name after it kept.
+fn signoff_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)(^|[\n.!?])[ \t]*(thanks|thank you|thx|many thanks|best|best regards|kind regards|warm regards|regards|cheers|sincerely)( so much| again| in advance| a lot)?[ \t]*[,!.]?[ \t]*(\n[ \t]*|[ \t]+)?(?-i:([A-Z][\w'-]*( [A-Z][\w'-]*)?))?[ \t]*\z").unwrap()
+    })
+}
+
+/// Remove the greeting line, filler sentences and the sign-off phrase. Names, numbers and
+/// every other sentence are left alone.
+pub fn trim_fluff(text: &str) -> String {
+    let mut s = greeting_re().replace(text.trim(), "").into_owned();
+    for re in filler_res() {
+        s = re.replace_all(&s, "").into_owned();
+    }
+    if let Some(c) = signoff_re().captures(&s) {
+        let start = c.get(0).unwrap().start() + c.get(1).map(|m| m.len()).unwrap_or(0);
+        let name = c.get(5).map(|m| m.as_str().to_string());
+        s.truncate(start);
+        if let Some(n) = name {
+            s = format!("{}\n\n{}", s.trim_end(), n);
+        }
+    }
+    // Tidy what the cuts left: doubled spaces and runs of empty lines.
+    let mut out: Vec<String> = Vec::new();
+    for line in s.lines() {
+        let l = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        if l.is_empty() && out.last().map(|p| p.is_empty()).unwrap_or(true) {
+            continue;
+        }
+        out.push(l);
+    }
+    out.join("\n").trim().to_string()
 }
 
 fn seed_for(text: &str, level: &str) -> u64 {
@@ -134,17 +190,25 @@ fn drop_line_periods(text: &str) -> String {
         .join("\n")
 }
 
-/// The deterministic CEO pass. `polished` leaves the text alone.
+/// Capital first letter (the model sometimes copies the example's "team - need…").
+fn capitalize_first(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) if f.is_lowercase() => f.to_uppercase().collect::<String>() + c.as_str(),
+        _ => s.to_string(),
+    }
+}
+
+/// The deterministic CEO pass. `polished` only fixes the opening capital.
 pub fn roughen(text: &str, level: &str) -> String {
     let mut rng = StdRng::seed_from_u64(seed_for(text, level));
     let mut s = text.trim().to_string();
     match level {
         "casual" => {
+            s = capitalize_first(&s);
             s = swap_words(&s, "and", "&", 2, 0.6, &mut rng);
             s = swap_words(&s, "with", "w/", 1, 0.7, &mut rng);
-            if s.ends_with('.') && !s.ends_with("..") {
-                s.pop();
-            }
+            s = drop_line_periods(&s);
         }
         "phone" => {
             s = swap_words(&s, "and", "&", 3, 0.8, &mut rng);
@@ -159,7 +223,7 @@ pub fn roughen(text: &str, level: &str) -> String {
             s = drop_line_periods(&s);
             s = lower_sentence_starts(&s);
         }
-        _ => {}
+        _ => s = capitalize_first(&s),
     }
     s
 }
@@ -171,7 +235,13 @@ pub async fn rewrite(cfg: &LlmConfig, text: &str, level: &str) -> Result<Value> 
     }
     let level = if LEVELS.contains(&level) { level } else { "casual" };
     let text = clip(text, 6000);
-    let user = format!("MESSAGE:\n{text}");
+    // Small models drop a price or a time unless they are told which ones to keep.
+    let numbers: Vec<&str> = numbers_re().find_iter(&text).map(|m| m.as_str()).collect();
+    let user = if numbers.is_empty() {
+        format!("MESSAGE:\n{text}")
+    } else {
+        format!("MESSAGE:\n{text}\n\nNUMBERS THAT MUST APPEAR IN YOUR VERSION: {}", numbers.join(", "))
+    };
     let mut v = llm::complete_json(cfg, prompts::CEO_SYSTEM, &user, 0.4).await?;
     let mut short = v["rewritten"].as_str().unwrap_or("").trim().to_string();
     let mut missing = missing_numbers(&text, &short);
@@ -186,6 +256,7 @@ pub async fn rewrite(cfg: &LlmConfig, text: &str, level: &str) -> Result<Value> 
     if short.is_empty() {
         return Err(anyhow!("The model returned nothing. Try again."));
     }
+    let short = trim_fluff(&short);
     let rewritten = roughen(&short, level);
     let words_in = crate::score::word_count(&text);
     let words_out = crate::score::word_count(&rewritten);
@@ -209,6 +280,7 @@ mod tests {
     fn polished_is_untouched() {
         let t = "Ship it Friday. Budget is $40,000.";
         assert_eq!(roughen(t, "polished"), t);
+        assert_eq!(roughen("team - need feedback by 5:30 PM.", "polished"), "Team - need feedback by 5:30 PM.");
     }
 
     #[test]
@@ -232,14 +304,39 @@ mod tests {
     }
 
     #[test]
-    fn casual_only_drops_the_final_period() {
-        let r = roughen("Looks good. Ship it.", "casual");
-        assert_eq!(r, "Looks good. Ship it");
+    fn casual_drops_line_ending_periods_only() {
+        assert_eq!(roughen("Looks good. Ship it.", "casual"), "Looks good. Ship it");
+        assert_eq!(roughen("Draft is attached.\n\nPricing needs work.", "casual"), "Draft is attached\n\nPricing needs work");
     }
 
     #[test]
     fn question_marks_survive() {
         assert!(roughen("Can we ship Friday?", "phone").ends_with('?'));
+    }
+
+    #[test]
+    fn fluff_is_trimmed_and_the_ask_stays() {
+        // What qwen2.5:3b actually returned for the launch-post email.
+        let model = "Hi team, \nAttached is the final draft of the launch post. We need everyone's feedback by tomorrow at 5:30 PM to ship on Friday, October 31. \nAlso, the pricing section might still need some work. Please let me know if you have any questions.\nThanks,\nAkif";
+        let t = trim_fluff(model);
+        assert!(t.starts_with("Attached is the final draft"), "{t}");
+        assert!(!t.to_lowercase().contains("questions"), "{t}");
+        assert!(!t.contains("Thanks"), "{t}");
+        assert!(t.ends_with("\n\nAkif"), "the name is kept: {t}");
+        assert!(t.contains("5:30 PM") && t.contains("October 31"), "{t}");
+    }
+
+    #[test]
+    fn a_flattened_signoff_and_well_wishes_go() {
+        let t = trim_fluff("I hope this email finds you well! Pricing needs work. Let me know if you have any questions. Thanks, Akif");
+        assert_eq!(t, "Pricing needs work.\n\nAkif");
+        assert_eq!(trim_fluff("Ship it Friday. Thanks!"), "Ship it Friday.");
+    }
+
+    #[test]
+    fn plain_content_is_untouched() {
+        let t = "Need the Q3 numbers by 5 PM.\nBest case we launch Monday.";
+        assert_eq!(trim_fluff(t), t, "'Best case' is not a sign-off");
     }
 
     #[test]

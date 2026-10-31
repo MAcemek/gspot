@@ -49,8 +49,26 @@ For "too long", "text" is two or three short sentences, split at the natural joi
 Return JSON only: {"items":[{"i":<number>,"flags":[...],"action":"keep"|"rephrase"|"remove","text":"<rephrase only>","why":"<short reason, rephrase/remove only>","confidence":1-5}]} with exactly one item per numbered sentence, in order."#;
 
 pub const CEO_SYSTEM: &str = r#"You rewrite a MESSAGE the way a busy CEO writes email and texts.
-Lead with the decision or the ask in the first line. Cut greetings, pleasantries, hedges ("I think", "just wanted to", "I hope this finds you well", "let me know if you have any questions"), apologies, filler and corporate jargon. Use short sentences and fragments, plain words, one idea per line. Keep every fact, name, number, date, amount and deadline, and every request the reader must act on; never add a fact. Aim for about a third of the original length; a single line is fine when it carries everything. No sign-off, or just the first name if the original signed off with one. Write clean, correctly spelled text: casual punctuation is added later. Keep the language of the MESSAGE.
-Return JSON: {"rewritten": "<the message>", "cut": ["<up to 3 short notes on what you removed>"]}"#;
+Rules:
+1. The first line is the ask or the decision. No greeting ("Hi team", "Hello Sarah").
+2. Cut pleasantries, hedges ("I think", "just wanted to", "I hope this finds you well"), apologies, filler, jargon, and offers like "let me know if you have any questions".
+3. Keep EVERY number, price, date, time and deadline exactly as written (e.g. $49, 5:30 PM, October 31), every name, and every request the reader must act on. Never add a fact.
+4. Short sentences or fragments, one idea per line. About a third of the original length.
+5. No sign-off line ("Thanks", "Best"); end with just the first name if the original was signed.
+6. Clean spelling and punctuation (casual punctuation is added later). Keep the language of the MESSAGE.
+
+Example
+MESSAGE:
+Hi Sarah,
+
+I hope you had a great weekend! I wanted to follow up on the vendor contract we discussed last Tuesday. Would it be possible for you to review it and send me your comments by Thursday? Legal needs it before the board meeting on the 14th, and the renewal is $12,000 a year. Let me know if you have any questions.
+
+Best,
+Jordan
+JSON:
+{"rewritten": "Sarah - need your comments on the vendor contract by Thursday.\nLegal needs it before the board meeting on the 14th. Renewal is $12,000/yr.\n\nJordan", "cut": ["weekend small talk", "follow-up preamble", "offer to answer questions"]}
+
+Return JSON only: {"rewritten": "<the message>", "cut": ["<up to 3 short notes on what you removed>"]}"#;
 
 pub const SUMMARIZE_SYSTEM: &str = "Summarize the following text in 3-6 bullet points, then one sentence on the main takeaway. Use plain markdown with '-' bullets.";
 

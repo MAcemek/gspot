@@ -117,7 +117,7 @@ export function Humanizer({ ctx }: { ctx: Ctx }) {
 
 const CEO_LEVELS = [
   { id: "polished", name: "Polished", desc: "Short and direct, still clean.", glyph: "scissors" },
-  { id: "casual", name: "Casual", desc: "Drops the last period, uses & and w/.", glyph: "cup" },
+  { id: "casual", name: "Casual", desc: "No periods at line ends, uses & and w/.", glyph: "cup" },
   { id: "phone", name: "Sent from my phone", desc: "lower case, no apostrophes, thx & pls.", glyph: "bolt" },
 ];
 
