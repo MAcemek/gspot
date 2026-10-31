@@ -395,7 +395,9 @@ async fn anthropic_complete(cfg: &LlmConfig, system: &str, messages: &[Message],
             }
             return Err(anyhow!("Anthropic error {}: {}", status, v["error"]["message"].as_str().unwrap_or(&v.to_string())));
         }
-        return Ok(v["content"][0]["text"].as_str().unwrap_or("").to_string());
+        // Current models think by default, so the first block can be a `thinking` block: take the text blocks.
+        let text: String = v["content"].as_array().map(|blocks| blocks.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect()).unwrap_or_default();
+        return Ok(text);
     }
     unreachable!()
 }
