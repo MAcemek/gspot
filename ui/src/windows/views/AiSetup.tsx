@@ -166,7 +166,7 @@ function LocalCard({ ctx, onDone }: { ctx: Ctx; onDone: () => void }) {
             <button className="btn btn--primary" disabled={!model} onClick={use}>Use {model || "this model"}</button>
             <button className="btn btn--ghost" onClick={check}>Refresh</button>
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>A 7–8B model (qwen2.5:7b, llama3.1:8b) gives the best suggestions; 3–4B models are faster on laptops.</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>Pick a model that fits in memory: 3–4B (qwen2.5:3b, gemma3:4b) for laptops and 16 GB of RAM or less, 7–8B (qwen2.5:7b) with a GPU or 32 GB.</div>
         </>
       ) : (
         <>
