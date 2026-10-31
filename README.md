@@ -12,7 +12,12 @@
 >   deterministic pass (`src-tauri/src/features/ceo.rs`), so names and numbers are never mangled.
 > * Small hardening: `open_url` only opens `http(s)` links.
 >
-> ### Windows quick start
+> ### Install on Windows
+>
+> Download **`GSpot_0.1.0_x64-setup.exe`** from the [latest release](https://github.com/MAcemek/gspot/releases/latest) and run it
+> (installs for your user, no admin). The build is not code-signed yet, so SmartScreen may ask: **More info → Run anyway**.
+>
+> ### Build from source on Windows
 >
 > ```powershell
 > # prerequisites: Rust (rustup), Node 20+, pnpm, Visual Studio C++ Build Tools, WebView2 (built into Windows 11)
