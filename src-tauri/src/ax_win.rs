@@ -351,7 +351,11 @@ impl AXElement {
     pub fn bounds_for_range(&self, loc: usize, len: usize) -> Option<Rect> {
         let r = self.range_at(loc, len)?;
         let vals = unsafe { safearray_vec::<f64>(r.GetBoundingRectangles().ok()?) };
-        let boxes: Vec<[f64; 4]> = vals.chunks_exact(4).map(|c| [c[0], c[1], c[2], c[3]]).filter(|b| b[2] > 0.0 && b[3] > 0.0).collect();
+        let mut boxes: Vec<[f64; 4]> = vals.chunks_exact(4).map(|c| [c[0], c[1], c[2], c[3]]).filter(|b| b[2] > 0.0 && b[3] > 0.0).collect();
+        // Chromium adds a 1 px sliver at the end of the previous line for a word right after a soft wrap.
+        if boxes.len() > 1 {
+            boxes.retain(|b| b[2] > 2.0);
+        }
         let first = boxes.first()?;
         if boxes.iter().any(|b| (b[1] - first[1]).abs() > first[3] / 2.0) {
             return None;
