@@ -30,8 +30,12 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
 # Root `build` is `cd src-tauri && tauri build`, so extra args land on `tauri build`.
 Push-Location $root
 try {
-  pnpm build -- --config '{\"bundle\":{\"createUpdaterArtifacts\":true}}'
-  if ($LASTEXITCODE -ne 0) { throw "pnpm build failed ($LASTEXITCODE)" }
+  # The Tauri CLI writes progress to stderr; Windows PowerShell turns that into errors, so judge by the exit code.
+  $ErrorActionPreference = "Continue"
+  pnpm build -- --config '{\"bundle\":{\"createUpdaterArtifacts\":true}}' 2>&1 | ForEach-Object { "$_" }
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = "Stop"
+  if ($code -ne 0) { throw "pnpm build failed ($code)" }
 } finally { Pop-Location }
 
 # Cargo target dir: .cargo/config.toml build.target-dir, else src-tauri/target.
