@@ -603,6 +603,20 @@ pub async fn publik_refresh_inner(shared: &Shared) -> Result<Value, String> {
     Ok(publik_status_inner(shared))
 }
 
+/// The account's chat model to use: the first preference it offers (exact, then by prefix);
+/// otherwise an instruct/chat model, then any model that is not obviously non-chat.
+fn pick_chat_model(prefs: &[&str], models: &[String]) -> Option<String> {
+    const NOT_CHAT: &[&str] = &["embed", "whisper", "tts", "image", "guard", "rerank", "reward", "safety", "parse", "clip", "vlm", "vision", "video", "detector", "translate", "code", "coder", "deplot", "kosmos", "fuyu", "neva", "vila", "-vl-"];
+    let chat = |m: &&String| !NOT_CHAT.iter().any(|x| m.contains(x));
+    prefs
+        .iter()
+        .find(|p| models.iter().any(|m| m == *p))
+        .map(|s| s.to_string())
+        .or_else(|| prefs.iter().find_map(|p| models.iter().find(|m| m.starts_with(p)).cloned()))
+        .or_else(|| models.iter().filter(chat).find(|m| m.contains("instruct") || m.ends_with("-it") || m.contains("chat")).cloned())
+        .or_else(|| models.iter().find(chat).cloned())
+}
+
 /// Bring-your-own-key with one field: detect the provider from the key's
 /// prefix, list the account's models, pick a sensible default, and ping it.
 pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
@@ -619,7 +633,7 @@ pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
     } else if k.starts_with("AIza") {
         (Provider::OpenAI, "https://generativelanguage.googleapis.com/v1beta/openai", &["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"])
     } else if k.starts_with("nvapi-") {
-        (Provider::OpenAI, "https://integrate.api.nvidia.com", &["openai/gpt-oss-120b", "meta/llama-3.3-70b-instruct", "nvidia/llama-3.3-nemotron-super-49b-v1.5", "meta/llama-3.1-8b-instruct"])
+        (Provider::OpenAI, "https://integrate.api.nvidia.com", &["openai/gpt-oss-120b", "openai/gpt-oss-20b", "google/gemma-4-31b-it", "mistralai/mistral-large-2-instruct", "nvidia/nemotron-3-super-120b-a12b", "google/gemma-3-12b-it"])
     } else {
         (Provider::OpenAI, "https://api.openai.com", &["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-4.1-mini", "gpt-4o-mini", "gpt-4o"])
     };
@@ -629,15 +643,17 @@ pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
         _ => llm::openai_models(&cfg).await,
     }
     .map_err(|e| format!("The key was not accepted: {e}"))?;
-    let pick = prefs
-        .iter()
-        .find(|p| models.iter().any(|m| m == *p))
-        .map(|s| s.to_string())
-        .or_else(|| prefs.iter().find_map(|p| models.iter().find(|m| m.starts_with(p)).cloned()))
-        .or_else(|| models.iter().find(|m| !m.contains("embed") && !m.contains("whisper") && !m.contains("tts") && !m.contains("image") && !m.contains("guard") && !["rerank", "reward", "safety", "parse", "clip", "vlm", "vision"].iter().any(|x| m.contains(x))).cloned())
-        .ok_or("The key works, but no chat model is available on it.")?;
+    let pick = pick_chat_model(prefs, &models).ok_or("The key works, but no chat model is available on it.")?;
     cfg.model = pick;
-    let reply = llm::complete(&cfg, "Reply with the single word: pong", &[llm::msg("user", "ping")], false, 0.0).await.map_err(|e| format!("The key works but the model test failed: {e}"))?;
+    let reply = llm::complete(&cfg, "Reply with the single word: pong", &[llm::msg("user", "ping")], false, 0.0).await.map_err(|e| {
+        // Some providers (NVIDIA) list models without a valid key, so a bad key only fails here.
+        let t = e.to_string();
+        if t.contains("401") || t.contains("403") {
+            "The key was not accepted. Check that you copied all of it, then try again.".to_string()
+        } else {
+            format!("The key works but the model test failed: {t}")
+        }
+    })?;
     Ok(json!({
         "provider": serde_json::to_value(&provider).unwrap(),
         "base_url": base,
@@ -692,6 +708,18 @@ pub async fn probe_key(key: String) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nvidia_keys_pick_a_current_chat_model() {
+        // A slice of NVIDIA's public /v1/models list (Nov 2026), alphabetical like the API.
+        let nv: Vec<String> = ["01-ai/yi-large", "bigcode/starcoder2-15b", "google/gemma-4-31b-it", "nvidia/nv-embedqa-e5-v5", "openai/gpt-oss-20b", "nvidia/riva-translate-4b-instruct"].iter().map(|s| s.to_string()).collect();
+        let prefs = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "google/gemma-4-31b-it"];
+        assert_eq!(pick_chat_model(&prefs, &nv).as_deref(), Some("openai/gpt-oss-20b"));
+        // With no preference on offer, an instruct model beats the first id in the list.
+        assert_eq!(pick_chat_model(&["meta/llama-9"], &nv).as_deref(), Some("google/gemma-4-31b-it"));
+        let only_odd: Vec<String> = vec!["nvidia/nv-embedqa-e5-v5".into(), "bigcode/starcoder2-15b".into()];
+        assert_eq!(pick_chat_model(&[], &only_odd), None, "embeddings and code models are not chat models");
+    }
 
     #[test]
     fn nvidia_endpoint_gets_v1() {

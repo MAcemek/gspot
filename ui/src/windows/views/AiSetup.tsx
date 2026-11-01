@@ -75,13 +75,14 @@ export function AiSetup({ ctx, mode, onDone }: { ctx: Ctx; mode: "onboarding" | 
       </button>
       {open === "local" && <LocalCard ctx={ctx} onDone={() => { setOpen(null); finish(); }} />}
 
-      {/* publik API */}
-      <button className={"choice" + (choice === "publik" ? " selected" : "")} onClick={() => { if (publik.has_key && choice !== "publik") turnOnPublik(); else setOpen(open === "publik" ? null : "publik"); }}>
-        <div className="choice__title"><I.Sparkle style={{ width: 20, height: 20, color: "#2cc9b6" }} />publik API<span className="choice__badge">Recommended · no setup</span></div>
-        <div className="choice__desc">Already set up. No account and no key to paste. Priced per use from your publik balance, with every charge on your dashboard.</div>
-        {publik.has_key && <div className="choice__status">{choice === "publik" ? "On" : "Set up"}{publikState ? ` · ${publikState}` : ""} · {publik.balance_line}{publik.week_label ? ` · ${publik.week_label}` : ""}</div>}
-        {!publik.can_provision && !publik.has_key && <div className="choice__status" style={{ color: "#ffbf47" }}>Not available in this build.</div>}
-      </button>
+      {/* publik API: hidden in builds without its app token, unless this computer already has a key */}
+      {(publik.can_provision || publik.has_key) && (
+        <button className={"choice" + (choice === "publik" ? " selected" : "")} onClick={() => { if (publik.has_key && choice !== "publik") turnOnPublik(); else setOpen(open === "publik" ? null : "publik"); }}>
+          <div className="choice__title"><I.Sparkle style={{ width: 20, height: 20, color: "#2cc9b6" }} />publik API<span className="choice__badge">No setup</span></div>
+          <div className="choice__desc">Already set up. No account and no key to paste. Priced per use from your publik balance, with every charge on your dashboard.</div>
+          {publik.has_key && <div className="choice__status">{choice === "publik" ? "On" : "Set up"}{publikState ? ` · ${publikState}` : ""} · {publik.balance_line}{publik.week_label ? ` · ${publik.week_label}` : ""}</div>}
+        </button>
+      )}
       {open === "publik" && !publik.has_key && (
         <div className="card" style={{ marginTop: -4 }}>
           <div className="card__title" style={{ fontSize: 15 }}>Turn on publik API?</div>
