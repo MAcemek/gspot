@@ -386,8 +386,20 @@ pub fn batches(sents: &[Sentence]) -> Vec<Vec<usize>> {
     out
 }
 
-pub fn user_message(sents: &[Sentence], batch: &[usize]) -> String {
-    let mut m = String::new();
+/// The request line for a writing goal ("" when there is none or it is unknown).
+pub fn goal_line(goal: &str) -> String {
+    let what = match goal {
+        "formal" => "too casual, slang, contractions",
+        "friendly" => "warm and approachable, not stiff",
+        "confident" => "direct, no hedging or apologizing",
+        "concise" => "fewer words, no filler",
+        _ => return String::new(),
+    };
+    format!("GOAL: {goal} ({what}) - also rephrase sentences that clearly miss this goal. Keep every number, name and quote.\n\n")
+}
+
+pub fn user_message(sents: &[Sentence], batch: &[usize], goal: &str) -> String {
+    let mut m = goal_line(goal);
     if let Some(&first) = batch.first() {
         if let Some(prev) = sents[..first].iter().rev().find(|s| s.judge || word_count(&s.text) >= 2) {
             m.push_str("CONTEXT (already judged, do not include): ");
@@ -414,11 +426,12 @@ pub fn user_message(sents: &[Sentence], batch: &[usize]) -> String {
     m
 }
 
-pub fn cache_key(prev: &str, text: &str) -> u64 {
+pub fn cache_key(prev: &str, text: &str, goal: &str) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut h = DefaultHasher::new();
     prompts::SPOT_SYSTEM.len().hash(&mut h);
+    goal.hash(&mut h);
     prev.trim().hash(&mut h);
     text.trim().hash(&mut h);
     h.finish()
@@ -793,6 +806,8 @@ fn title_and_message(v: &Verdict) -> (&'static str, &'static str, String) {
                 ("SpotRephrase", "Use the active voice", "Say who does what. The active voice is shorter and easier to follow.")
             } else if f.contains("wordy") {
                 ("SpotRephrase", "Make it more concise", "This sentence uses more words than it needs. The rewrite says the same thing in plain words.")
+            } else if f.contains("goal") {
+                ("SpotRephrase", "Match your writing goal", "The rewrite fits the tone you asked for and keeps the meaning.")
             } else if f.contains("tangled") || f.contains("long") {
                 ("SpotRephrase", "Rephrase for clarity", "This sentence is hard to follow in one read. The rewrite keeps the meaning and untangles it.")
             } else {
@@ -902,7 +917,8 @@ fn plain_verdict(orig: &str, earlier: &[&str], doc_rest: &str) -> Option<Verdict
 
 /// Spot-check `text`. Sentences already in `cache` are not sent to the model.
 /// With no model (`None`) only the deterministic wordy-phrase rewrites run.
-pub async fn run(cfg: Option<&LlmConfig>, text: &str, cache: &mut Cache) -> anyhow::Result<Outcome> {
+/// `goal` is the writing goal ("" for none); it is part of every cache key.
+pub async fn run(cfg: Option<&LlmConfig>, text: &str, cache: &mut Cache, goal: &str) -> anyhow::Result<Outcome> {
     let sents = split_sentences(text);
     let map = TextMap::new(text);
     let mut out = Outcome { sentences: sents.iter().filter(|s| s.judge).count(), skipped: sents.iter().filter(|s| !s.judge).count(), ..Default::default() };
@@ -913,7 +929,7 @@ pub async fn run(cfg: Option<&LlmConfig>, text: &str, cache: &mut Cache) -> anyh
         if !s.judge {
             continue;
         }
-        match cache.get(&cache_key(&prev_of(k), &s.text)) {
+        match cache.get(&cache_key(&prev_of(k), &s.text, goal)) {
             Some(Some(v)) => {
                 verdicts.insert(k, v.clone());
                 out.from_cache += 1;
@@ -927,7 +943,7 @@ pub async fn run(cfg: Option<&LlmConfig>, text: &str, cache: &mut Cache) -> anyh
         out.batches += 1;
         let by_i: HashMap<u64, RawItem> = match cfg {
             Some(cfg) => {
-                let user = user_message(&sents, &batch);
+                let user = user_message(&sents, &batch, goal);
                 let v = llm::complete_json(cfg, prompts::SPOT_SYSTEM, &user, 0.2).await?;
                 let items: Vec<RawItem> = v["items"].as_array().map(|a| a.iter().filter_map(|x| serde_json::from_value(x.clone()).ok()).collect()).unwrap_or_default();
                 items.into_iter().map(|it| (it.i, it)).collect()
@@ -937,7 +953,7 @@ pub async fn run(cfg: Option<&LlmConfig>, text: &str, cache: &mut Cache) -> anyh
         let mut candidates: Vec<(usize, u64, Verdict)> = Vec::new();
         for (n, &k) in batch.iter().enumerate() {
             out.checked += 1;
-            let key = cache_key(&prev_of(k), &sents[k].text);
+            let key = cache_key(&prev_of(k), &sents[k].text, goal);
             let earlier: Vec<&str> = sents[..k].iter().filter(|s| s.judge).map(|s| s.text.as_str()).collect();
             let doc_rest: String = sents.iter().enumerate().filter(|(j, _)| *j != k).map(|(_, s)| s.text.as_str()).collect::<Vec<_>>().join(" ");
             let model_verdict = match by_i.get(&(n as u64 + 1)) {
@@ -981,7 +997,7 @@ pub async fn run(cfg: Option<&LlmConfig>, text: &str, cache: &mut Cache) -> anyh
         }
         let mut unhinted_kept = 0usize;
         for (idx, (k, _, v)) in candidates.into_iter().enumerate() {
-            let key = cache_key(&prev_of(k), &sents[k].text);
+            let key = cache_key(&prev_of(k), &sents[k].text, goal);
             let keep = if hinted[idx] { true } else { unhinted_kept += 1; unhinted_kept <= cap };
             if keep {
                 cache.insert(key, Some(v.clone()));
@@ -1071,11 +1087,25 @@ mod tests {
     #[test]
     fn user_message_numbers_sentences_and_adds_hints() {
         let s = split_sentences("First we met at the cafe. In order to be able to make progress we talked.");
-        let m = user_message(&s, &[0, 1]);
+        let m = user_message(&s, &[0, 1], "");
         assert!(m.starts_with("SENTENCES:\n1. First we met at the cafe.\n2. In order to"));
         assert!(m.contains("HINTS:\n2: wordy phrase \"in order to\""));
-        let m2 = user_message(&s, &[1]);
+        let m2 = user_message(&s, &[1], "");
         assert!(m2.starts_with("CONTEXT (already judged, do not include): First we met at the cafe."));
+    }
+
+    #[test]
+    fn a_writing_goal_adds_a_request_line_and_changes_the_cache_key() {
+        let s = split_sentences("First we met at the cafe. Then we talked for hours.");
+        assert!(!user_message(&s, &[0], "").contains("GOAL"));
+        assert!(!user_message(&s, &[0], "bogus").contains("GOAL"));
+        let m = user_message(&s, &[0, 1], "formal");
+        assert!(m.starts_with("GOAL: formal (too casual, slang, contractions) - also rephrase"), "{m}");
+        assert!(m.contains("SENTENCES:\n1. First we met at the cafe."));
+        assert!(user_message(&s, &[0], "concise").contains("fewer words, no filler"));
+        assert_ne!(cache_key("a", "b", ""), cache_key("a", "b", "formal"));
+        assert_ne!(cache_key("a", "b", "formal"), cache_key("a", "b", "friendly"));
+        assert_eq!(cache_key("a", "b", "formal"), cache_key("a", "b", "formal"));
     }
 
     fn item(action: &str, text: &str, conf: u64, flags: &[&str]) -> RawItem {
@@ -1269,7 +1299,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let mut cache = Cache::new();
         let t0 = std::time::Instant::now();
-        let o = rt.block_on(run(Some(&cfg), &text, &mut cache)).expect("spot check");
+        let o = rt.block_on(run(Some(&cfg), &text, &mut cache, &std::env::var("GRAMMARLAMA_LIVE_GOAL").unwrap_or_default())).expect("spot check");
         println!("LIVE sentences={} checked={} batches={} rejected={} ms={}", o.sentences, o.checked, o.batches, o.rejected, t0.elapsed().as_millis());
         let mut j = serde_json::to_value(&o).unwrap();
         j["ms"] = serde_json::json!(t0.elapsed().as_millis() as u64);
@@ -1297,13 +1327,13 @@ mod tests {
     async fn run_without_a_model_still_rewrites_hinted_sentences() {
         let text = "We shipped it on Friday. In the event that you are unable to attend, please notify your manager. Thanks.";
         let mut cache = Cache::new();
-        let o = run(None, text, &mut cache).await.unwrap();
+        let o = run(None, text, &mut cache, "").await.unwrap();
         assert_eq!(o.batches, 0);
         assert_eq!(o.alerts.len(), 1, "{:?}", o.alerts);
         assert_eq!(o.alerts[0].suggestions[0], "If you are unable to attend, please notify your manager.");
         assert_eq!(o.alerts[0].title, "Make it more concise");
         // cached: a second run asks nothing and finds the same thing
-        let o2 = run(None, text, &mut cache).await.unwrap();
+        let o2 = run(None, text, &mut cache, "").await.unwrap();
         assert_eq!(o2.alerts.len(), 1);
         assert_eq!(o2.from_cache, 2);
     }

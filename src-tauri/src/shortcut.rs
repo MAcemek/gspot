@@ -12,21 +12,34 @@ fn shortcut() -> Shortcut {
     Shortcut::new(Some(MODS), Code::KeyG)
 }
 
+fn accept_shortcut() -> Shortcut {
+    Shortcut::new(Some(MODS), Code::KeyY)
+}
+
 /// Ctrl+Shift+G (Cmd+Shift+G on macOS): open the panel, or tuck it away when it is open.
+/// Ctrl+Shift+Y (Cmd+Shift+Y): accept the suggestion under the cursor.
 pub fn plugin() -> tauri::plugin::TauriPlugin<Wry> {
     tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, pressed, event| {
-            if event.state() == ShortcutState::Pressed && *pressed == shortcut() {
+            if event.state() != ShortcutState::Pressed {
+                return;
+            }
+            if *pressed == shortcut() {
                 toggle(app);
+            } else if *pressed == accept_shortcut() {
+                crate::commands::accept_at_cursor(app);
             }
         })
         .build()
 }
 
-/// Register the shortcut; logs and carries on if another app already owns it.
+/// Register the shortcuts; logs and carries on if another app already owns one.
 pub fn register(app: &AppHandle) {
     if let Err(e) = app.global_shortcut().register(shortcut()) {
         log::warn!("Ctrl+Shift+G is taken by another app: {e}");
+    }
+    if let Err(e) = app.global_shortcut().register(accept_shortcut()) {
+        log::warn!("Ctrl+Shift+Y is taken by another app: {e}");
     }
 }
 

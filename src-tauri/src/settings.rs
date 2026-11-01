@@ -112,6 +112,8 @@ pub struct Settings {
     pub user_words: Vec<String>,
     /// Built-in skipped apps the user turned GSpot back on in.
     pub unskip_apps: Vec<String>, // bundle ids / exe names
+    /// What the writing should sound like: "", "formal", "friendly", "confident" or "concise".
+    pub writing_goal: String,
 }
 
 impl Default for Settings {
@@ -137,6 +139,7 @@ impl Default for Settings {
             start_with_windows: true,
             user_words: vec![],
             unskip_apps: vec![],
+            writing_goal: String::new(),
         }
     }
 }
@@ -320,6 +323,12 @@ mod tests {
         let back: Settings = serde_json::from_str(r#"{"onboarded":true}"#).unwrap();
         assert!(back.user_words.is_empty());
         assert!(back.unskip_apps.is_empty());
+    }
+
+    #[test]
+    fn old_files_have_no_writing_goal() {
+        let back: Settings = serde_json::from_str(r#"{"onboarded":true}"#).unwrap();
+        assert_eq!(back.writing_goal, "");
     }
 
     #[test]

@@ -297,6 +297,11 @@ impl AXElement {
         }
     }
 
+    /// UTF-16 range of the text in view; not available through AX (Windows only).
+    pub fn visible_range(&self) -> Option<(usize, usize)> {
+        None
+    }
+
     /// The nearest ancestor scroll area, if any (bounded walk).
     pub fn enclosing_scroll_area(&self) -> Option<AXElement> {
         let mut cur = self.parent()?;

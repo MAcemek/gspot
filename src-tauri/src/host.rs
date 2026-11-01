@@ -77,6 +77,11 @@ const SPOT_DEBOUNCE: Duration = Duration::from_millis(3500);
 /// Longer documents are spot-checked on demand only (the Spot check button).
 const SPOT_MAX_WORDS: usize = 6000;
 const MAX_CHARS: usize = 80_000;
+/// A field read slower than this is throttled to once per `read time * 4` (capped).
+const SLOW_READ_MS: u128 = 40;
+const MAX_READ_GAP_MS: u128 = 1500;
+/// Alerts this far (UTF-16 units) beyond the visible text still get underlines, so short scrolls feel instant.
+const VISIBLE_MARGIN: usize = 200;
 const GBUTTON: f64 = 48.0;
 const GBUTTON_INSET: f64 = 14.0;
 
@@ -227,6 +232,10 @@ struct RectCache {
     /// Bounds of the first alert's range, to notice scrolling.
     probe: Option<Rect>,
     rects: Vec<UnderlineRect>,
+    /// Text in view (UTF-16), when the field reports it; refreshed less often if the call is slow.
+    vis: Option<(usize, usize)>,
+    vis_at: Option<Instant>,
+    vis_ms: u128,
 }
 
 fn rect_close(a: &Option<Rect>, b: &Option<Rect>) -> bool {
@@ -294,9 +303,10 @@ pub fn spawn(app: AppHandle, shared: Shared) {
             let mut last_geom_sig = String::new();
             let mut last_status_sig = String::new();
             let mut cache = RectCache::default();
+            let mut next_full_read = Instant::now();
             loop {
                 let t0 = Instant::now();
-                tick(&app, &shared, &system, &mut engine, &mut last_geom_sig, &mut last_status_sig, &mut cache);
+                tick(&app, &shared, &system, &mut engine, &mut last_geom_sig, &mut last_status_sig, &mut cache, &mut next_full_read);
                 let spent = t0.elapsed();
                 if spent < POLL {
                     std::thread::sleep(POLL - spent);
@@ -306,7 +316,7 @@ pub fn spawn(app: AppHandle, shared: Shared) {
         .expect("host loop thread");
 }
 
-fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engine, last_geom_sig: &mut String, last_status_sig: &mut String, cache: &mut RectCache) {
+fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engine, last_geom_sig: &mut String, last_status_sig: &mut String, cache: &mut RectCache, next_full_read: &mut Instant) {
     let t_start = Instant::now();
     let mut read_ms = 0u128;
     let mut lint_ms = 0u128;
@@ -376,58 +386,67 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
                 st.last_text_hash = 0;
                 st.lint_dirty = false;
                 alerts_event = Some(vec![]);
+                *next_full_read = Instant::now();
             }
             st.lost_focus_at = None;
-            let text = el.string("AXValue").unwrap_or_default();
-            let truncated = text.chars().count() > MAX_CHARS;
-            let text: String = if truncated { text.chars().take(MAX_CHARS).collect() } else { text };
-            let (sel_start, sel_len) = el.range("AXSelectedTextRange").unwrap_or((0, 0));
-            let frame = el.frame().unwrap_or_default();
-            let visible = visible_frame(&el, frame);
-            read_ms = t_start.elapsed().as_millis();
-            let h = hash_text(&text);
-            let changed = h != st.last_text_hash;
-            let selected_text = crate::textmap::slice_utf16(&text, sel_start, sel_start + sel_len);
-            let doc_id = format!("{}-{}", el.pid(), el.identity_hash());
-            let version = st.doc.as_ref().map(|d| d.version).unwrap_or(0) + if changed { 1 } else { 0 };
-            let prev_sel = st.doc.as_ref().map(|d| (d.sel_start, d.sel_end));
-            let doc = HostDoc {
-                id: doc_id,
-                app_name: front_name.clone(),
-                bundle_id: front_bid.clone(),
-                pid: front_pid,
-                role,
-                text: text.clone(),
-                sel_start,
-                sel_end: sel_start + sel_len,
-                selected_text: selected_text.clone(),
-                frame,
-                visible,
-                version,
-                active: true,
-                truncated,
-            };
-            if changed {
-                st.last_text_hash = h;
-                st.lint_pending_since = Some(Instant::now());
-                st.lint_dirty = true;
-                st.spot_dirty = true;
-                st.spot_pending_since = Some(Instant::now());
-                // Keep existing alerts only if they still match their original text (cheap
-                // re-validation); spot-check sentences follow the text if they moved.
-                let text_ref = &text;
-                st.all_alerts.retain(|a| crate::textmap::slice_utf16(text_ref, a.u16_start, a.u16_end) == a.original);
-                crate::features::spotcheck::re_anchor(&mut st.spot_alerts, text_ref);
-                st.alerts = st.visible_alerts();
-                doc_event = Some(doc.clone());
-            } else if st.doc.is_none() {
-                doc_event = Some(doc.clone());
+            // A slow field (a long document) is re-read at most every few ticks; the focus check above still runs each tick.
+            if same && st.doc.is_some() && Instant::now() < *next_full_read {
+                st.status.has_doc = true;
+            } else {
+                let t_read = Instant::now();
+                let text = el.string("AXValue").unwrap_or_default();
+                let truncated = text.chars().count() > MAX_CHARS;
+                let text: String = if truncated { text.chars().take(MAX_CHARS).collect() } else { text };
+                let (sel_start, sel_len) = el.range("AXSelectedTextRange").unwrap_or((0, 0));
+                let frame = el.frame().unwrap_or_default();
+                let visible = visible_frame(&el, frame);
+                read_ms = t_start.elapsed().as_millis();
+                let last_read_ms = t_read.elapsed().as_millis();
+                *next_full_read = if last_read_ms > SLOW_READ_MS { Instant::now() + Duration::from_millis((last_read_ms * 4).min(MAX_READ_GAP_MS) as u64) } else { Instant::now() };
+                let h = hash_text(&text);
+                let changed = h != st.last_text_hash;
+                let selected_text = crate::textmap::slice_utf16(&text, sel_start, sel_start + sel_len);
+                let doc_id = format!("{}-{}", el.pid(), el.identity_hash());
+                let version = st.doc.as_ref().map(|d| d.version).unwrap_or(0) + if changed { 1 } else { 0 };
+                let prev_sel = st.doc.as_ref().map(|d| (d.sel_start, d.sel_end));
+                let doc = HostDoc {
+                    id: doc_id,
+                    app_name: front_name.clone(),
+                    bundle_id: front_bid.clone(),
+                    pid: front_pid,
+                    role,
+                    text: text.clone(),
+                    sel_start,
+                    sel_end: sel_start + sel_len,
+                    selected_text: selected_text.clone(),
+                    frame,
+                    visible,
+                    version,
+                    active: true,
+                    truncated,
+                };
+                if changed {
+                    st.last_text_hash = h;
+                    st.lint_pending_since = Some(Instant::now());
+                    st.lint_dirty = true;
+                    st.spot_dirty = true;
+                    st.spot_pending_since = Some(Instant::now());
+                    // Keep existing alerts only if they still match their original text (cheap
+                    // re-validation); spot-check sentences follow the text if they moved.
+                    let text_ref = &text;
+                    st.all_alerts.retain(|a| crate::textmap::slice_utf16(text_ref, a.u16_start, a.u16_end) == a.original);
+                    crate::features::spotcheck::re_anchor(&mut st.spot_alerts, text_ref);
+                    st.alerts = st.visible_alerts();
+                    doc_event = Some(doc.clone());
+                } else if st.doc.is_none() {
+                    doc_event = Some(doc.clone());
+                }
+                if prev_sel != Some((sel_start, sel_start + sel_len)) {
+                    sel_event = Some((sel_start, sel_start + sel_len, selected_text));
+                }
+                st.doc = Some(doc);
+                st.status.has_doc = true;
             }
-            if prev_sel != Some((sel_start, sel_start + sel_len)) {
-                sel_event = Some((sel_start, sel_start + sel_len, selected_text));
-            }
-            st.doc = Some(doc);
-            st.status.has_doc = true;
         } else if st.doc.is_some() {
             // No editable element in front. Keep the last document for the panel.
             if !ours {
@@ -450,7 +469,7 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
             if let Some(d) = st.doc.clone() {
                 st.status.linting = true;
                 let t_lint = Instant::now();
-                let all = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| engine.check(&d.text))) {
+                let all = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| engine.check_incremental(&d.text))) {
                     Ok(v) => v,
                     Err(_) => {
                         log::error!("engine panicked on a {}-char document; keeping previous alerts", d.text.len());
@@ -535,7 +554,20 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
             let mut geometry = Geometry { origin_x: vis.x, origin_y: vis.y, width: vis.w, height: vis.h, rects: vec![], hovered: None, over_card: false };
             if big_enough && show_underlines {
                 let t_rects = Instant::now();
-                let shown: Vec<&Alert> = alerts.iter().take(80).collect();
+                // Only what is on screen (when the field says): the rest are off-screen and cost UIA calls.
+                let stale = cache.vis_at.map(|t| t.elapsed() >= Duration::from_millis(if cache.vis_ms > 30 { 400 } else { 0 })).unwrap_or(true);
+                if stale {
+                    let t_vis = Instant::now();
+                    cache.vis = el.visible_range();
+                    cache.vis_ms = t_vis.elapsed().as_millis();
+                    cache.vis_at = Some(Instant::now());
+                }
+                let vr = cache.vis;
+                let shown: Vec<&Alert> = alerts
+                    .iter()
+                    .filter(|a| vr.map(|(vs, ve)| a.u16_end > vs.saturating_sub(VISIBLE_MARGIN) && a.u16_start < ve + VISIBLE_MARGIN).unwrap_or(true))
+                    .take(80)
+                    .collect();
                 let key = {
                     use std::hash::{Hash, Hasher};
                     let mut hs = std::collections::hash_map::DefaultHasher::new();
@@ -547,6 +579,7 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
                         (v.round() as i64).hash(&mut hs);
                     }
                     show_underlines.hash(&mut hs);
+                    vr.hash(&mut hs);
                     hs.finish()
                 };
                 // One accessibility call to notice scrolling.
@@ -571,7 +604,9 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
                             }
                         }
                     }
-                    *cache = RectCache { key, probe, rects };
+                    cache.key = key;
+                    cache.probe = probe;
+                    cache.rects = rects;
                 }
                 geometry.rects = cache.rects.clone();
                 rects_ms = t_rects.elapsed().as_millis();

@@ -37,7 +37,7 @@ export interface Settings {
   search: { brave_key: string }; custom_voices: Voice[]; custom_audiences: Audience[];
   dismissed: number[]; target_language: string; citation_style: string; show_gbutton: boolean; show_underlines: boolean; onboarded: boolean;
   auto_spot_check: boolean; ai_fallback_local: boolean; start_with_windows: boolean; publik: PublikSettings; skip_apps: SkipApp[];
-  user_words: string[]; unskip_apps: string[];
+  user_words: string[]; unskip_apps: string[]; writing_goal: string;
 }
 
 export interface PublikNotice { kind: string; message: string; link_label: string; link_url: string }
@@ -51,6 +51,8 @@ export interface PublikStatus {
 export interface UpdateInfo { version: string; current: string; notes: string }
 export interface KeyProbe { provider: ProviderId; base_url: string; model: string; models: number; reply: string }
 export interface SpotResult { busy?: boolean; stale?: boolean; sentences: number; checked: number; from_cache: number; batches: number; skipped: number; rejected: number; suggestions: number; ms: number }
+
+export interface ParagraphScore { index: number; start: number; end: number; words: number; sentences: number; flesch: number; grade: number; label: string; preview: string }
 
 export interface Session { doc_id: string; app_name: string; bundle_id: string; title: string; words: number; score: number | null; last_seen: number }
 

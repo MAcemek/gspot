@@ -8,6 +8,7 @@ use harper_core::{Dialect, Document};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::OnceLock;
 
@@ -51,18 +52,71 @@ pub struct Alert {
     pub stable_hash: u64,
 }
 
+/// Texts shorter than this are linted whole (one pass is already fast).
+const INCREMENTAL_MIN_CHARS: usize = 4_000;
+const PARA_CACHE_MAX: usize = 5_000;
+
 pub struct Engine {
     group: LintGroup,
+    /// Harper alerts per paragraph hash, offsets relative to the paragraph.
+    para_cache: HashMap<u64, Vec<Alert>>,
+    /// Paragraphs Harper has run on (test hook for the incremental path).
+    pub paragraphs_linted: usize,
 }
 
 impl Engine {
     pub fn new() -> Self {
         let group = LintGroup::new_curated(FstDictionary::curated(), Dialect::American);
-        Engine { group }
+        Engine { group, para_cache: HashMap::new(), paragraphs_linted: 0 }
     }
 
+    /// Full pass: Harper over the whole text, then the shared rules and clean-up.
     pub fn check(&mut self, text: &str) -> Vec<Alert> {
         let map = TextMap::new(text);
+        let harper = self.harper_alerts(text, &map);
+        finish(harper, text, &map)
+    }
+
+    /// Like `check`, but long texts re-run Harper only on paragraphs whose text changed
+    /// (cached per paragraph hash). The document-wide rules always run on the full text.
+    pub fn check_incremental(&mut self, text: &str) -> Vec<Alert> {
+        if text.len() < INCREMENTAL_MIN_CHARS {
+            return self.check(text);
+        }
+        let map = TextMap::new(text);
+        let mut harper: Vec<Alert> = Vec::new();
+        for (cs, _, bs, be) in paragraphs(text) {
+            let para = &text[bs..be];
+            let key = {
+                let mut h = DefaultHasher::new();
+                para.hash(&mut h);
+                h.finish()
+            };
+            if !self.para_cache.contains_key(&key) {
+                if self.para_cache.len() >= PARA_CACHE_MAX {
+                    self.para_cache.clear();
+                }
+                let pmap = TextMap::new(para);
+                let rel = self.harper_alerts(para, &pmap);
+                self.paragraphs_linted += 1;
+                self.para_cache.insert(key, rel);
+            }
+            let u16_off = map.char_to_utf16(cs);
+            for a in &self.para_cache[&key] {
+                let mut a = a.clone();
+                a.start += cs;
+                a.end += cs;
+                a.u16_start += u16_off;
+                a.u16_end += u16_off;
+                a.id = format!("{:x}-{}", a.stable_hash, a.start);
+                harper.push(a);
+            }
+        }
+        finish(harper, text, &map)
+    }
+
+    /// Harper lints for `text` as alerts (offsets relative to `text`).
+    fn harper_alerts(&mut self, text: &str, map: &TextMap) -> Vec<Alert> {
         let doc = Document::new_plain_english_curated(text);
         let source = doc.get_source();
         let lints = self.group.lint(&doc);
@@ -132,25 +186,57 @@ impl Engine {
                 stable_hash,
             });
         }
-        out.extend(delivery_rules(text, &map));
-        out.extend(very_rules(text, &map));
-        out.extend(engagement_rules(text, &map));
-        // A misspelled word gets one card: drop other lints on exactly its span ("untill" -> "distill").
-        let spelled: std::collections::HashSet<(usize, usize)> = out.iter().filter(|a| a.kind == "Spelling" || a.kind == "Typo").map(|a| (a.start, a.end)).collect();
-        out.retain(|a| a.kind == "Spelling" || a.kind == "Typo" || !spelled.contains(&(a.start, a.end)));
-        // Remove overlapping duplicates (keep the first, higher-priority entry).
-        out.sort_by(|a, b| a.start.cmp(&b.start).then(a.priority.cmp(&b.priority)));
-        let mut kept: Vec<Alert> = Vec::with_capacity(out.len());
-        for a in out {
-            if let Some(last) = kept.last() {
-                if a.start < last.end && a.category == last.category {
-                    continue;
-                }
-            }
-            kept.push(a);
-        }
-        kept
+        out
     }
+}
+
+/// Rules that look at the whole text, then the spelling-wins and overlap clean-up.
+fn finish(mut out: Vec<Alert>, text: &str, map: &TextMap) -> Vec<Alert> {
+    out.extend(delivery_rules(text, map));
+    out.extend(very_rules(text, map));
+    out.extend(engagement_rules(text, map));
+    // A misspelled word gets one card: drop other lints on exactly its span ("untill" -> "distill").
+    let spelled: std::collections::HashSet<(usize, usize)> = out.iter().filter(|a| a.kind == "Spelling" || a.kind == "Typo").map(|a| (a.start, a.end)).collect();
+    out.retain(|a| a.kind == "Spelling" || a.kind == "Typo" || !spelled.contains(&(a.start, a.end)));
+    // Remove overlapping duplicates (keep the first, higher-priority entry).
+    out.sort_by(|a, b| a.start.cmp(&b.start).then(a.priority.cmp(&b.priority)));
+    let mut kept: Vec<Alert> = Vec::with_capacity(out.len());
+    for a in out {
+        if let Some(last) = kept.last() {
+            if a.start < last.end && a.category == last.category {
+                continue;
+            }
+        }
+        kept.push(a);
+    }
+    kept
+}
+
+/// Paragraphs (runs of non-blank lines) as `(char_start, char_end, byte_start, byte_end)`.
+fn paragraphs(text: &str) -> Vec<(usize, usize, usize, usize)> {
+    let mut out = Vec::new();
+    let (mut bpos, mut cpos) = (0usize, 0usize);
+    let mut open: Option<(usize, usize)> = None;
+    let mut end = (0usize, 0usize);
+    for line in text.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\n', '\r']);
+        if body.trim().is_empty() {
+            if let Some((cs, bs)) = open.take() {
+                out.push((cs, end.0, bs, end.1));
+            }
+        } else {
+            if open.is_none() {
+                open = Some((cpos, bpos));
+            }
+            end = (cpos + body.chars().count(), bpos + body.len());
+        }
+        bpos += line.len();
+        cpos += line.chars().count();
+    }
+    if let Some((cs, bs)) = open {
+        out.push((cs, end.0, bs, end.1));
+    }
+    out
 }
 
 pub fn stable_hash(kind: &str, original: &str, suggestion: Option<&str>) -> u64 {
@@ -429,6 +515,56 @@ mod tests {
     }
 
     use super::*;
+
+    fn long_doc() -> String {
+        let paras = [
+            "The first paragraph talks about planning the quarter and what teh team needs to finish before the review meeting on Friday afternoon, including the budget and the hiring plan for the new office in the city.",
+            "Our second section explains why we did not recieve the shipment on time, and how the vendor has promised a full refund along with a new delivery date that works for the warehouse staff and the drivers.",
+            "A third paragraph covers the product roadmap in detail. We ship the editor first, then the sync service, and finally the mobile apps, each with a short beta period so that early users can report problems quickly.",
+            "The fourth part is about customer support. Tickets grew by a third last month, mostly from people who could not find the export button, so we will move it into the main toolbar and add a short tooltip beside it.",
+            "Fifth, a note on hiring: we have two open roles, one in design and one in infrastructure, and both candidates pools are strong, so we expect to make offers within the next two weeks if interviews go to plan.",
+            "Finally the sixth paragraph wraps up with thanks to everyone who helped, especially the night crew who adress every incident calmly, and a reminder that the retrospective is on Monday at ten in the morning sharp.",
+        ];
+        let tail = " Everyone on the team has read the notes, and the open questions are collected in the shared document so that nothing is lost between meetings, which keeps each follow up short and keeps the owners of every task easy to find.";
+        paras.iter().map(|p| format!("{p}{tail}{tail}{tail}")).collect::<Vec<_>>().join("\n\n")
+    }
+
+    fn key(alerts: &[Alert]) -> Vec<(String, usize, usize, Option<String>)> {
+        alerts.iter().filter(|a| a.kind == "Spelling").map(|a| (a.original.clone(), a.start, a.end, a.suggestions.first().cloned())).collect()
+    }
+
+    #[test]
+    fn incremental_matches_a_full_check_and_relints_only_the_edited_paragraph() {
+        let text = long_doc();
+        assert!(text.len() > 4_000, "{}", text.len());
+        let mut inc = Engine::new();
+        let mut full = Engine::new();
+        let a = inc.check_incremental(&text);
+        let b = full.check(&text);
+        assert!(!key(&b).is_empty());
+        assert_eq!(key(&a), key(&b));
+        for x in &a {
+            assert_eq!(crate::textmap::slice_utf16(&text, x.u16_start, x.u16_end), x.original);
+        }
+        let first = inc.paragraphs_linted;
+        assert_eq!(first, 6);
+        // Edit one paragraph: only it is linted again.
+        let edited = text.replacen("Fifth, a note on hiring", "Fifth, a note on hiring teh people", 1);
+        let a2 = inc.check_incremental(&edited);
+        assert_eq!(inc.paragraphs_linted - first, 1);
+        assert_eq!(key(&a2), key(&Engine::new().check(&edited)));
+        // Unchanged text costs nothing.
+        inc.check_incremental(&edited);
+        assert_eq!(inc.paragraphs_linted - first, 1);
+    }
+
+    #[test]
+    fn short_text_goes_through_the_full_check() {
+        let mut e = Engine::new();
+        let t = "This is an test of teh engine.\n\nSecond paragraph.";
+        assert_eq!(key(&e.check_incremental(t)), key(&Engine::new().check(t)));
+        assert_eq!(e.paragraphs_linted, 0);
+    }
 
     #[test]
     fn harper_finds_a_misspelling_with_a_suggestion() {

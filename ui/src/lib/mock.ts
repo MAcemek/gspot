@@ -47,7 +47,7 @@ const SETTINGS: Settings = {
   llm: { provider: "publik", base_url: "https://publikhq.com/api/v1", api_key: "", model: "publik-balanced" },
   dock_side: "left", rail_side: "right", user_name: "Mann Bellani", search: { brave_key: "" },
   custom_voices: [], custom_audiences: [], dismissed: [], target_language: "Spanish", citation_style: "MLA",
-  show_gbutton: true, show_underlines: true, onboarded: true, auto_spot_check: true, ai_fallback_local: true, start_with_windows: true, publik: { disclosure_version: 1, first_run_owed: false }, skip_apps: [], user_words: [], unskip_apps: [],
+  show_gbutton: true, show_underlines: true, onboarded: true, auto_spot_check: true, ai_fallback_local: true, start_with_windows: true, publik: { disclosure_version: 1, first_run_owed: false }, skip_apps: [], user_words: [], unskip_apps: [], writing_goal: "",
 };
 
 const PUBLIK: PublikStatus = {
@@ -88,6 +88,10 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     case "run_feature": {
       const name = String(args?.name ?? "");
       if (name === "score") return SCORE;
+      if (name === "readability") return { paragraphs: [
+        { index: 0, start: 0, end: 160, words: 30, sentences: 3, flesch: 78, grade: 5.2, label: "Easy", preview: "So here is what actually happened. After the video" },
+        { index: 1, start: 162, end: 400, words: 44, sentences: 1, flesch: 42, grade: 13.1, label: "Hard", preview: "i wish i could say that i felt some sort" },
+      ] };
       if (name === "tone") return { tones: [{ name: "Confident", confidence: 0.72 }, { name: "Informal", confidence: 0.55 }, { name: "Direct", confidence: 0.4 }], summary: "The writing comes across as confident and direct, with a casual voice." };
       if (name === "spot_check") return { sentences: 7, checked: 7, from_cache: 0, batches: 1, skipped: 0, rejected: 0, suggestions: 2, ms: 1200 };
       return { too_short: true };

@@ -1,9 +1,25 @@
+import { useEffect, useState } from "react";
 import type { Ctx } from "../Panel";
+import { ipc } from "../../lib/ipc";
+import type { ParagraphScore } from "../../lib/types";
 import * as I from "../../components/icons";
 import { NoDoc, TitleBar } from "../Panel";
 
+// Pill colors by reading ease: green easy, amber fairly hard, red hard.
+function pillColor(p: ParagraphScore): string {
+  if (p.flesch >= 60) return "#2cc9b6";
+  if (p.flesch >= 50) return "#ffbf47";
+  return "#ff7a74";
+}
+
 export function Performance({ ctx }: { ctx: Ctx }) {
+  const [paras, setParas] = useState<ParagraphScore[]>([]);
+  useEffect(() => {
+    if (!ctx.doc) return;
+    ipc.runFeature<{ paragraphs: ParagraphScore[] }>("readability").then((r) => setParas(r.paragraphs ?? [])).catch(() => setParas([]));
+  }, [ctx.doc?.version]);
   if (!ctx.doc) return <NoDoc ctx={ctx} />;
+  const hardest = paras.length > 1 ? paras.reduce((a, b) => (b.grade > a.grade ? b : a)) : paras[0];
   const s = ctx.score;
   const rows = s ? [
     { label: "Correctness", color: "#ff7a74", fill: s.correctness_fill, val: s.correctness_label, ok: s.correctness_count === 0 },
@@ -29,6 +45,19 @@ export function Performance({ ctx }: { ctx: Ctx }) {
             <div className="val">{r.ok ? <I.Check style={{ width: 16, height: 16, color: "#2cc9b6" }} /> : null}{r.val}</div>
           </div>
         ))}
+        {paras.length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <div className="section-label">Paragraphs</div>
+            {paras.map((p) => (
+              <div className="kv" key={p.index} style={{ gap: 10 }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.preview}…</span>
+                <span style={{ color: "#0e1f1c", background: pillColor(p), borderRadius: 10, padding: "2px 10px", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{p.label}</span>
+                <span style={{ color: "var(--text-subdued)", fontSize: 13, whiteSpace: "nowrap" }}>grade {p.grade.toFixed(1)}</span>
+              </div>
+            ))}
+            {hardest && hardest.flesch < 60 && <p style={{ color: "var(--text-subdued)", fontSize: 13, margin: "8px 0 0" }}>Hardest: "{hardest.preview}…" Split long sentences or use shorter words.</p>}
+          </div>
+        )}
         {s && (
           <div style={{ marginTop: 24 }}>
             <div className="section-label">Text statistics</div>

@@ -49,6 +49,35 @@ pub fn accept_alert_inner(app: &AppHandle, shared: &Shared, id: &str, suggestion
     Ok(res)
 }
 
+/// Ctrl+Shift+Y: accept the first fix of the underline at the caret (word
+/// alerts before sentence rewrites); a toast says so when nothing is there.
+pub fn accept_at_cursor(app: &AppHandle) {
+    let shared = app.state::<Shared>().inner().clone();
+    let id = {
+        let st = shared.lock().unwrap();
+        let caret = st.doc.as_ref().map(|d| d.sel_start);
+        caret.and_then(|c| {
+            let hit = |a: &&Alert| !a.suggestions.is_empty() && a.u16_start <= c && c <= a.u16_end;
+            let word = st.alerts.iter().filter(hit).find(|a| !a.kind.starts_with("Spot"));
+            word.or_else(|| st.alerts.iter().filter(hit).next()).map(|a| a.id.clone())
+        })
+    };
+    match id {
+        Some(id) => {
+            let app = app.clone();
+            // Applying sleeps while the text field settles, so keep it off the shortcut thread.
+            std::thread::spawn(move || {
+                if let Err(e) = accept_alert_inner(&app, &shared, &id, 0) {
+                    let _ = app.emit("ai://notice", e);
+                }
+            });
+        }
+        None => {
+            let _ = app.emit("ai://notice", "No suggestion at the cursor.");
+        }
+    }
+}
+
 pub fn dismiss_alert_inner(app: &AppHandle, shared: &Shared, id: &str) -> Result<(), String> {
     let mut st = shared.lock().unwrap();
     if let Some(a) = st.alerts.iter().find(|a| a.id == id).cloned() {
@@ -169,10 +198,12 @@ fn claim_spot(shared: &Shared) -> Result<Option<(String, String, features::spotc
 }
 
 async fn spot_check_inner(app: &AppHandle, shared: &Shared, cfg: Option<&LlmConfig>, args: &Value) -> Result<Value, String> {
+    // The writing goal steers the model and is part of the cache key.
+    let goal = shared.lock().unwrap().settings.writing_goal.clone();
     if let Some(t) = args["text"].as_str().filter(|t| !t.trim().is_empty()) {
         let mut cache = features::spotcheck::Cache::new();
         let started = std::time::Instant::now();
-        let o = features::spotcheck::run(cfg, t, &mut cache).await.map_err(err)?;
+        let o = features::spotcheck::run(cfg, t, &mut cache, &goal).await.map_err(err)?;
         let mut v = serde_json::to_value(o).unwrap();
         v["ms"] = json!(started.elapsed().as_millis() as u64);
         return Ok(v);
@@ -193,7 +224,7 @@ async fn spot_check_inner(app: &AppHandle, shared: &Shared, cfg: Option<&LlmConf
         }
     };
     let started = std::time::Instant::now();
-    let result = features::spotcheck::run(cfg, &text, &mut cache).await;
+    let result = features::spotcheck::run(cfg, &text, &mut cache, &goal).await;
     let mut st = shared.lock().unwrap();
     st.spot_running = false;
     st.spot_cache = cache;
@@ -275,7 +306,7 @@ pub async fn run_feature_inner(app: &AppHandle, shared: &Shared, name: &str, arg
     let settings: Settings = shared.lock().unwrap().settings.clone();
     let llm_cfg = effective_llm(&settings);
     let cfg = llm_cfg.clone().unwrap_or_else(|_| settings.llm.clone());
-    let needs_llm = !matches!(name, "create_audience" | "rewriter_scan" | "plagiarism" | "score" | "spot_check" | "detect_ollama");
+    let needs_llm = !matches!(name, "create_audience" | "rewriter_scan" | "plagiarism" | "score" | "readability" | "spot_check" | "detect_ollama");
     if needs_llm {
         llm_cfg.clone()?;
     }
@@ -363,6 +394,10 @@ pub async fn run_feature_inner(app: &AppHandle, shared: &Shared, name: &str, arg
             let st = shared.lock().unwrap();
             let d = st.doc.as_ref().ok_or("Click into a text field first.")?;
             serde_json::to_value(crate::score::compute(&d.text, &st.alerts)).unwrap()
+        }
+        "readability" => {
+            let (text, _, _) = resolve_text(shared, &whole_args(&args))?;
+            json!({"paragraphs": crate::score::paragraphs(&text)})
         }
         "ping_llm" => {
             let r = llm::complete(&cfg, "Reply with the single word: pong", &[llm::msg("user", "ping")], false, 0.0).await.map_err(err)?;

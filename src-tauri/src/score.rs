@@ -63,6 +63,103 @@ pub fn flesch_reading_ease(text: &str) -> f64 {
     206.835 - 1.015 * (w / s) - 84.6 * (syl as f64 / w)
 }
 
+/// Readability of one paragraph of the document.
+#[derive(Clone, Debug, Serialize)]
+pub struct ParagraphScore {
+    pub index: usize,
+    /// char offsets into the document; `end` is exclusive
+    pub start: usize,
+    pub end: usize,
+    pub words: usize,
+    pub sentences: usize,
+    pub flesch: f64,
+    pub grade: f64,
+    pub label: String,
+    pub preview: String,
+}
+
+/// Paragraphs under this many words are not scored.
+pub const MIN_PARAGRAPH_WORDS: usize = 12;
+
+fn flesch_label(f: f64) -> &'static str {
+    if f >= 80.0 {
+        "Very easy"
+    } else if f >= 60.0 {
+        "Easy"
+    } else if f >= 50.0 {
+        "Fairly hard"
+    } else if f >= 30.0 {
+        "Hard"
+    } else {
+        "Very hard"
+    }
+}
+
+/// Score each paragraph (blank-line separated; single newlines when the text
+/// has no blank line) for reading ease and grade level.
+pub fn paragraphs(text: &str) -> Vec<ParagraphScore> {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let line_blank = |a: usize, b: usize| chars[a..b].iter().all(|c| c.is_whitespace());
+    // (start, end) of every line, without its newline
+    let mut lines: Vec<(usize, usize)> = Vec::new();
+    let mut ls = 0;
+    for i in 0..=n {
+        if i == n || chars[i] == '\n' {
+            lines.push((ls, i));
+            ls = i + 1;
+        }
+    }
+    let has_blank = lines.len() > 1 && lines.iter().any(|&(a, b)| line_blank(a, b));
+    let mut groups: Vec<(usize, usize)> = Vec::new();
+    let mut cur: Option<(usize, usize)> = None;
+    for &(a, b) in &lines {
+        if line_blank(a, b) {
+            groups.extend(cur.take());
+        } else if has_blank {
+            cur = Some(match cur {
+                Some((s, _)) => (s, b),
+                None => (a, b),
+            });
+        } else {
+            groups.push((a, b));
+        }
+    }
+    groups.extend(cur.take());
+    let mut out = Vec::new();
+    for (a, b) in groups {
+        // trim surrounding whitespace so offsets slice back to the paragraph text
+        let (mut a, mut b) = (a, b);
+        while a < b && chars[a].is_whitespace() {
+            a += 1;
+        }
+        while b > a && chars[b - 1].is_whitespace() {
+            b -= 1;
+        }
+        let para: String = chars[a..b].iter().collect();
+        let words: Vec<&str> = para.unicode_words().collect();
+        if words.len() < MIN_PARAGRAPH_WORDS {
+            continue;
+        }
+        let (w, s) = (words.len() as f64, sentence_count(&para).max(1) as f64);
+        let syl = words.iter().map(|x| syllables(x)).sum::<usize>() as f64;
+        let flesch = 206.835 - 1.015 * (w / s) - 84.6 * (syl / w);
+        let grade = 0.39 * (w / s) + 11.8 * (syl / w) - 15.59;
+        out.push(ParagraphScore {
+            index: out.len(),
+            start: a,
+            end: b,
+            words: words.len(),
+            sentences: s as usize,
+            flesch,
+            grade,
+            label: flesch_label(flesch).into(),
+            preview: words.iter().take(10).cloned().collect::<Vec<_>>().join(" "),
+        });
+    }
+    out
+}
+
 pub fn compute(text: &str, alerts: &[Alert]) -> Score {
     let words = word_count(text);
     let sentences = sentence_count(text);
@@ -214,5 +311,36 @@ mod tests {
         let easy = flesch_reading_ease("The dog ran. The cat sat. It was fun.");
         let hard = flesch_reading_ease("Notwithstanding the aforementioned considerations, the implementation necessitates comprehensive reevaluation.");
         assert!(easy > hard);
+    }
+
+    #[test]
+    fn paragraph_scores_rank_easy_above_hard_and_skip_short_ones() {
+        let easy = "The dog ran to the park. The cat sat on the mat. It was fun. We all had a good time there.";
+        let hard = "Notwithstanding the aforementioned considerations, the implementation of comprehensive organizational restructuring necessitates extraordinarily sophisticated interdepartmental coordination mechanisms.";
+        let text = format!("{easy}\n\nToo short here.\n\n{hard}");
+        let p = paragraphs(&text);
+        assert_eq!(p.len(), 2, "the short paragraph is skipped");
+        assert!(p[0].flesch >= 80.0, "{}", p[0].flesch);
+        assert_eq!(p[0].label, "Very easy");
+        assert!(p[1].flesch < 30.0, "{}", p[1].flesch);
+        assert_eq!(p[1].label, "Very hard");
+        assert!(p[1].grade > p[0].grade);
+        for x in &p {
+            let slice: String = text.chars().skip(x.start).take(x.end - x.start).collect();
+            assert!(slice.starts_with(&x.preview.split(' ').next().unwrap()), "{slice}");
+        }
+        assert_eq!(text.chars().skip(p[1].start).take(p[1].end - p[1].start).collect::<String>(), hard);
+        assert_eq!(p[0].index, 0);
+        assert_eq!(p[1].index, 1);
+    }
+
+    #[test]
+    fn single_newlines_split_paragraphs_when_there_is_no_blank_line() {
+        let a = "The dog ran to the park and the cat sat on the mat today.";
+        let b = "We all had a good time there and then we went home to eat.";
+        let text = format!("{a}\n{b}");
+        let p = paragraphs(&text);
+        assert_eq!(p.len(), 2);
+        assert_eq!(text.chars().skip(p[1].start).take(p[1].end - p[1].start).collect::<String>(), b);
     }
 }

@@ -99,6 +99,7 @@ export function Underlines() {
             {alert.suggestions.length > 0 && (
               <button className="btn btn--primary" style={{ padding: "8px 14px" }} onClick={() => { ipc.acceptAlert(alert.id, 0).catch(() => {}); setOpen(null); }}>Accept</button>
             )}
+            {alert.suggestions.length > 0 && <span style={{ fontSize: 12, color: "#8c8c8c", marginLeft: -4 }}>Ctrl+Shift+Y</span>}
             {alert.suggestions.length === 0 && (
               <button className="btn btn--outline" style={{ padding: "8px 14px" }} disabled={suggesting === alert.id} onClick={() => { setSuggesting(alert.id); ipc.runFeature("word_options", { id: alert.id }).catch(() => {}).finally(() => setSuggesting(null)); }}>
                 {suggesting === alert.id ? "Suggesting…" : "Suggest options"}

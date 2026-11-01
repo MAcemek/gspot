@@ -20,7 +20,12 @@ README follows further down.
   Gmail-style rich editors, forms. Hover an underline for the fix, click Accept, and it is typed straight in
   (your clipboard is never touched).
 * **Offline spelling and grammar** with [Harper](https://writewithharper.com), plus smarter spelling picks (common
-  words first, typo-aware: `comming` → coming, `adress` → address) and stronger words for "very …".
+  words first, typo-aware: `comming` → coming, `adress` → address), stronger words for "very …", and your own
+  dictionary (**Add to dictionary** on any spelling card).
+* **Keyboard first**: **Ctrl+Shift+G** opens the panel from any app; put the cursor in an underlined word and press
+  **Ctrl+Shift+Y** to apply the fix.
+* **Writing goals and readability**: pick Formal, Friendly, Confident or Concise and the AI sentence check steers
+  toward it; the Performance view rates every paragraph (Easy … Very hard, with a grade level).
 * **AI tools**: rewrite, tone, translate, AI chat, Suggest options for any card, and **Talk like a CEO**, which
   cuts a message to the ask and types it the way a busy exec would (Polished, Casual, Sent from my phone)
   without touching names or numbers.
@@ -38,6 +43,9 @@ Measured on a Windows 11 laptop (installed build):
 | Hover card appears | 60 ms | 20–85 ms | – |
 | Accept a fix | 150 ms | 40–90 ms | 320 ms |
 
+Long documents stay fast: after you edit one paragraph of a 10,000-word document, only that paragraph is re-checked
+(about 14 ms instead of about 1 s), and underlines are drawn only for the part on screen.
+
 ## Install
 
 1. Download `GSpot_<version>_x64-setup.exe` from the [latest release](https://github.com/MAcemek/gspot/releases/latest)
@@ -52,8 +60,9 @@ For AI features, either install [Ollama](https://ollama.com/download) and run `o
 
 ### Known limits
 
-* Plain editors and standard text boxes work best. Google Docs draws its own text and is likely not supported.
-  Discord and Slack should behave like Chrome but are not tested yet. Use **Skip this app** where underlines
+* Plain editors and standard text boxes work best. **Google Docs is not supported**: it draws text on a canvas,
+  and Google only gives the text with its positions to extensions it has approved. Code editors and terminals are
+  skipped by default (turn GSpot on for one from the panel or Settings). Discord and Slack should behave like Chrome but are not tested yet. Use **Skip this app** where underlines
   land in the wrong place, and please [open an issue](https://github.com/MAcemek/gspot/issues).
 * With a cloud key, the text you check with AI features is sent to that provider. Spelling and grammar stay on your computer.
 

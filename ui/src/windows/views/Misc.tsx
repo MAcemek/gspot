@@ -6,6 +6,7 @@ import { ipc } from "../../lib/ipc";
 import { relativeTime } from "../../lib/text";
 import type { Settings, UpdateInfo } from "../../lib/types";
 import { AiSetup } from "./AiSetup";
+import { GoalPicker } from "./Tone";
 
 export function History({ ctx }: { ctx: Ctx }) {
   return (
@@ -48,6 +49,7 @@ export function SettingsView({ ctx }: { ctx: Ctx }) {
         <div className="section-label">AI</div>
         <AiSetup ctx={ctx} mode="settings" />
         <div className="section-label">General</div>
+        <p style={{ color: "var(--text-subdued)", fontSize: 13, margin: "2px 0 8px" }}>Ctrl+Shift+G opens GSpot. Put the cursor in an underlined word and press Ctrl+Shift+Y to accept the fix.</p>
         <label className="kv"><span>Start GSpot with Windows</span><input type="checkbox" checked={s.start_with_windows ?? true} onChange={(e) => save({ ...s, start_with_windows: e.target.checked })} /></label>
         <div className="kv">
           <span>GSpot {version}{update && <><br /><span style={{ color: "var(--text-subdued)", fontSize: 13 }}>Version {update.version} is available</span></>}</span>
@@ -56,6 +58,7 @@ export function SettingsView({ ctx }: { ctx: Ctx }) {
             : <button className="btn btn--outline" disabled={busy !== ""} onClick={check}>{busy === "checking" ? "Checking…" : "Check for updates"}</button>}
         </div>
         <div className="section-label">Suggestions</div>
+        <div className="field"><label>Writing goal</label><GoalPicker ctx={ctx} /></div>
         <label className="kv"><span>Spot-check sentences when I stop typing</span><input type="checkbox" checked={s.auto_spot_check} onChange={(e) => save({ ...s, auto_spot_check: e.target.checked })} /></label>
         <label className="kv"><span>Show the G button next to text fields</span><input type="checkbox" checked={s.show_gbutton} onChange={(e) => save({ ...s, show_gbutton: e.target.checked })} /></label>
         <label className="kv"><span>Draw underlines in the app</span><input type="checkbox" checked={s.show_underlines} onChange={(e) => save({ ...s, show_underlines: e.target.checked })} /></label>

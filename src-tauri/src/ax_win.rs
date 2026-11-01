@@ -252,6 +252,24 @@ impl AXElement {
         }
     }
 
+    /// UTF-16 `(start, end)` of the text currently scrolled into view
+    /// (first visible range's start to the last one's end); `None` when unsupported.
+    pub fn visible_range(&self) -> Option<(usize, usize)> {
+        let tp = self.text_pattern()?;
+        unsafe {
+            let vis = tp.GetVisibleRanges().ok()?;
+            let n = vis.Length().ok()?;
+            if n < 1 {
+                return None;
+            }
+            let doc = tp.DocumentRange().ok()?;
+            let start = Self::offset_of(&doc, &vis.GetElement(0).ok()?)?;
+            let last = vis.GetElement(n - 1).ok()?;
+            let end = Self::offset_of(&doc, &last)? + last.GetText(-1).ok()?.to_string().encode_utf16().count();
+            Some((start, end.max(start)))
+        }
+    }
+
     pub fn string(&self, name: &str) -> Option<String> {
         match name {
             "AXValue" => self.value_text(),
