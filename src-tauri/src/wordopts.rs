@@ -133,9 +133,45 @@ pub fn stronger_than_very(word: &str) -> Option<&'static [&'static str]> {
         .map(|i| TABLE[i].1)
 }
 
+/// Drop model options that cannot replace `phrase`: the bare word behind "very" ("very bitter" ->
+/// "bitter"), and single words of another part of speech ("very stuffy" -> "stench").
+pub fn filter_options(phrase: &str, options: Vec<String>) -> Vec<String> {
+    use harper_core::spell::{Dictionary, FstDictionary};
+    let lower = phrase.trim().to_lowercase();
+    let base = lower.strip_prefix("very ").unwrap_or(&lower).trim().to_string();
+    let dict = FstDictionary::curated();
+    // Part of speech of a single dictionary word: (adjective, adverb).
+    let pos = |w: &str| dict.get_word_metadata_str(w).map(|m| (m.is_adjective(), m.is_adverb()));
+    let want = if base.contains(' ') { None } else { pos(&base).filter(|p| p.0 || p.1) };
+    options
+        .into_iter()
+        .filter(|o| {
+            let o = o.trim().to_lowercase();
+            if o == base {
+                return false;
+            }
+            match (want, o.contains(' ')) {
+                (Some((adj, adv)), false) => pos(&o).map(|(a, d)| (adj && a) || (adv && d)).unwrap_or(false),
+                _ => true,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_options_that_cannot_fit_are_dropped() {
+        // What qwen2.5:3b returned in the app.
+        let o = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(filter_options("very stuffy", o(&["stale", "stench", "musty"])), o(&["stale", "musty"]));
+        assert_eq!(filter_options("very bitter", o(&["bitter", "acrid", "acerbic"])), o(&["acrid", "acerbic"]));
+        // Multi-word rewrites and phrases without a known part of speech pass through.
+        assert_eq!(filter_options("very stuffy", o(&["hard to breathe in"])), o(&["hard to breathe in"]));
+        assert_eq!(filter_options("in order to", o(&["to"])), o(&["to"]));
+    }
 
     /// Keys must be strictly ascending (sorted and unique) for binary search.
     #[test]

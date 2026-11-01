@@ -303,10 +303,10 @@ pub async fn word_options(cfg: &LlmConfig, sentence: &str, phrase: &str, issue: 
             continue;
         }
         out.push(t);
-        if out.len() == 4 {
-            break;
-        }
     }
+    // Small models offer the bare word or a noun for an adjective; drop what cannot fit.
+    let mut out = crate::wordopts::filter_options(phrase, out);
+    out.truncate(4);
     if out.is_empty() {
         return Err(anyhow!("The model had no options for this one."));
     }

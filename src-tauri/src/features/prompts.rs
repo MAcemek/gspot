@@ -30,7 +30,7 @@ pub const REWRITE_PHRASE_SYSTEM: &str = r#"A sentence contains a PHRASE that AI 
 Return JSON: {"suggestions": ["...", "...", "..."]}"#;
 
 pub const WORD_OPTIONS_SYSTEM: &str = r#"You suggest replacements for a flagged PHRASE inside a SENTENCE. ISSUE says why the phrase was flagged.
-Give 3 or 4 alternatives that fit the sentence grammatically and fix the ISSUE. Every alternative must MEAN THE SAME as the PHRASE (only stronger, clearer or more precise) and must suit what the sentence is about. Each replaces ONLY the PHRASE: no surrounding words, no quotes, 1-8 words. For "very" plus a word, give single words that mean "very <that word>". For a long phrase or a whole sentence, give rewrites of that phrase.
+Give 5 alternatives, best first, that fit the sentence grammatically and fix the ISSUE. Every alternative must MEAN THE SAME as the PHRASE (only stronger, clearer or more precise) and must suit what the sentence is about. Each replaces ONLY the PHRASE: no surrounding words, no quotes, 1-8 words. For "very" plus a word, give single words that mean "very <that word>". For a long phrase or a whole sentence, give rewrites of that phrase.
 Example: PHRASE "very big", SENTENCE "They live in a very big house." -> {"options": ["huge", "enormous", "massive"]}
 Return JSON: {"options": ["...", "..."]}"#;
 
