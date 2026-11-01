@@ -392,6 +392,17 @@ impl AXElement {
         }
     }
 
+    /// Text of `len` UTF-16 units at `loc` (one small range, cheap even in Word).
+    pub fn text_range(&self, loc: usize, len: usize) -> Option<String> {
+        let r = self.range_at(loc, len)?;
+        unsafe { r.GetText(-1) }.ok().map(|s| s.to_string())
+    }
+
+    /// Whether the element currently has keyboard focus.
+    pub fn has_focus(&self) -> bool {
+        self.el().map(|e| unsafe { e.CurrentHasKeyboardFocus() }.map(|b| b.as_bool()).unwrap_or(false)).unwrap_or(false)
+    }
+
     /// Give the element keyboard focus (brings its window to the front).
     pub fn focus(&self) -> bool {
         self.el().map(|e| unsafe { e.SetFocus() }.is_ok()).unwrap_or(false)

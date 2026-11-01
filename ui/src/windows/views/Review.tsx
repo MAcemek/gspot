@@ -73,7 +73,7 @@ export function Review({ ctx }: { ctx: Ctx }) {
 
   const accept = async (a: Alert, idx = 0) => {
     setBusy(a.id);
-    try { const r = await ipc.acceptAlert(a.id, idx); ctx.toast(r.method === "ax" ? "Applied" : "Applied via paste"); }
+    try { const r = await ipc.acceptAlert(a.id, idx); ctx.toast(r.method === "paste" ? "Applied via paste" : "Applied"); }
     catch (e) { ctx.toast(String(e)); }
     finally { setBusy(null); }
   };

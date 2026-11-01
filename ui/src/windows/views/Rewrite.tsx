@@ -14,7 +14,7 @@ export function RewriteResult({ ctx, original, rewritten, usedSelection, onBack 
   const apply = async () => {
     const d = ctx.doc; if (!d) return;
     const [s, e] = usedSelection ? [d.sel_start, d.sel_end] : [0, d.text.length];
-    try { const r = await ipc.replaceRange(s, e, rewritten); ctx.toast(r.method === "ax" ? "Replaced" : "Replaced via paste"); }
+    try { const r = await ipc.replaceRange(s, e, rewritten); ctx.toast(r.method === "paste" ? "Replaced via paste" : "Replaced"); }
     catch (err) { ctx.toast(String(err)); }
   };
   return (
