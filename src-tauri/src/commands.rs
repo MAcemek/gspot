@@ -604,7 +604,7 @@ pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
     } else if k.starts_with("sk-or-") {
         (Provider::OpenAI, "https://openrouter.ai/api/v1", &["openai/gpt-5.6-terra", "anthropic/claude-sonnet-5-5", "openai/gpt-5.5", "openai/gpt-4o-mini", "openai/gpt-4o"])
     } else if k.starts_with("gsk_") {
-        (Provider::OpenAI, "https://api.groq.com/openai", &["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"])
+        (Provider::OpenAI, "https://api.groq.com/openai", &["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant"])
     } else if k.starts_with("AIza") {
         (Provider::OpenAI, "https://generativelanguage.googleapis.com/v1beta/openai", &["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"])
     } else {
@@ -621,7 +621,7 @@ pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
         .find(|p| models.iter().any(|m| m == *p))
         .map(|s| s.to_string())
         .or_else(|| prefs.iter().find_map(|p| models.iter().find(|m| m.starts_with(p)).cloned()))
-        .or_else(|| models.iter().find(|m| !m.contains("embed") && !m.contains("whisper") && !m.contains("tts") && !m.contains("image")).cloned())
+        .or_else(|| models.iter().find(|m| !m.contains("embed") && !m.contains("whisper") && !m.contains("tts") && !m.contains("image") && !m.contains("guard")).cloned())
         .ok_or("The key works, but no chat model is available on it.")?;
     cfg.model = pick;
     let reply = llm::complete(&cfg, "Reply with the single word: pong", &[llm::msg("user", "ping")], false, 0.0).await.map_err(|e| format!("The key works but the model test failed: {e}"))?;
