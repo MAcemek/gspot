@@ -8,7 +8,12 @@ use crate::textmap::{slice_utf16, splice_utf16};
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// How long to wait for a pasted fix to show up; slow apps such as Word read the clipboard late.
+const PASTE_WAIT: Duration = Duration::from_millis(2000);
+/// How often to re-check the field while waiting for a pasted fix.
+const PASTE_POLL: Duration = Duration::from_millis(80);
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -113,19 +118,23 @@ pub fn replace_range(el: &AXElement, pid: i32, loc: usize, len: usize, replaceme
             #[cfg(target_os = "macos")]
             ax::activate_app(pid);
             sleep(Duration::from_millis(120));
-            if paste_text(replacement).is_ok() {
-                for _ in 0..6 {
-                    sleep(Duration::from_millis(80));
+            if let Ok(saved) = paste_text(replacement) {
+                let start = Instant::now();
+                while start.elapsed() < PASTE_WAIT {
+                    sleep(PASTE_POLL);
                     if let Some(new_text) = verified(el, loc, replacement) {
+                        restore_clipboard(saved, replacement);
                         return Ok(ApplyResult { method: Method::Paste, new_text });
                     }
-                }
-                // Some editors normalise text (smart quotes, trailing space). Accept if the whole value matches the expectation.
-                if let Some(now) = el.string("AXValue") {
-                    if now == expected {
-                        return Ok(ApplyResult { method: Method::Paste, new_text: now });
+                    // Some editors normalise text (smart quotes, trailing space). Accept if the whole value matches the expectation.
+                    if let Some(now) = el.string("AXValue") {
+                        if now == expected {
+                            restore_clipboard(saved, replacement);
+                            return Ok(ApplyResult { method: Method::Paste, new_text: now });
+                        }
                     }
                 }
+                restore_clipboard(saved, replacement);
             }
         }
     }
@@ -140,16 +149,23 @@ pub fn replace_range(el: &AXElement, pid: i32, loc: usize, len: usize, replaceme
     Err(anyhow!("This app did not accept the replacement. Try editing it directly."))
 }
 
-fn paste_text(text: &str) -> Result<()> {
+/// Put `text` on the clipboard and send the paste keys. Returns the user's previous clipboard text.
+fn paste_text(text: &str) -> Result<Option<String>> {
     use arboard::Clipboard;
     let mut cb = Clipboard::new()?;
     let saved = cb.get_text().ok();
     cb.set_text(text.to_string())?;
     sleep(Duration::from_millis(60));
     post_paste_keys();
-    sleep(Duration::from_millis(160));
-    if let Some(prev) = saved {
+    Ok(saved)
+}
+
+/// Put the user's clipboard text back, but only if the clipboard still holds our replacement.
+fn restore_clipboard(saved: Option<String>, replacement: &str) {
+    use arboard::Clipboard;
+    let Some(prev) = saved else { return };
+    let Ok(mut cb) = Clipboard::new() else { return };
+    if cb.get_text().ok().as_deref() == Some(replacement) {
         let _ = cb.set_text(prev);
     }
-    Ok(())
 }
