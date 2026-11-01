@@ -16,7 +16,9 @@ pub mod overlay;
 pub mod publik;
 pub mod score;
 pub mod settings;
+pub mod spellrank;
 pub mod textmap;
+pub mod wordopts;
 
 use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem};

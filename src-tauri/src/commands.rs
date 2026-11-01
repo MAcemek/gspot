@@ -228,6 +228,41 @@ pub async fn spot_check_auto(app: AppHandle, shared: Shared, cfg: LlmConfig) {
     }
 }
 
+/// Ask the model for replacements for one flagged phrase and store them on the alert.
+async fn word_options_inner(app: &AppHandle, shared: &Shared, cfg: &LlmConfig, id: &str) -> Result<Value, String> {
+    let gone = "That suggestion is gone. Try again.";
+    let (alert, text) = {
+        let st = shared.lock().unwrap();
+        (st.alerts.iter().find(|a| a.id == id).cloned(), st.doc.as_ref().map(|d| d.text.clone()))
+    };
+    let (alert, text) = alert.zip(text).ok_or(gone)?;
+    let chars: Vec<char> = text.chars().collect();
+    let is_end = |c: &char| matches!(c, '.' | '!' | '?' | '\n');
+    let start = chars[..alert.start.min(chars.len())].iter().rposition(is_end).map(|i| i + 1).unwrap_or(0);
+    let from = alert.end.min(chars.len());
+    let end = chars[from..].iter().position(is_end).map(|i| from + i + 1).unwrap_or(chars.len());
+    let sentence: String = chars[start..end.max(start)].iter().collect();
+    let sentence: String = sentence.trim().chars().take(600).collect();
+    let phrase = alert.original.trim();
+    let issue = format!("{} - {}", alert.title, alert.message);
+    let mut options = features::word_options(cfg, &sentence, phrase, &issue).await.map_err(err)?;
+    if alert.original.ends_with(' ') {
+        for o in options.iter_mut() {
+            o.push(' ');
+        }
+    }
+    let mut guard = shared.lock().unwrap();
+    let st = &mut *guard;
+    for a in st.all_alerts.iter_mut().chain(st.spot_alerts.iter_mut()).filter(|a| a.id == id) {
+        a.suggestions = options.clone();
+    }
+    st.alerts = st.visible_alerts();
+    let alerts = st.alerts.clone();
+    drop(guard);
+    let _ = app.emit("host://alerts", &alerts);
+    Ok(json!({"options": options}))
+}
+
 pub async fn run_feature_inner(app: &AppHandle, shared: &Shared, name: &str, args: Value) -> Result<Value, String> {
     let settings: Settings = shared.lock().unwrap().settings.clone();
     let llm_cfg = effective_llm(&settings);
@@ -307,6 +342,7 @@ pub async fn run_feature_inner(app: &AppHandle, shared: &Shared, name: &str, arg
             json!({"phrases": found, "words": words, "too_short": words < 8})
         }
         "rewrite_phrase" => features::rewrite_phrase(&cfg, args["sentence"].as_str().unwrap_or(""), args["phrase"].as_str().unwrap_or("")).await.map_err(err)?,
+        "word_options" => word_options_inner(app, shared, &cfg, args["id"].as_str().unwrap_or("")).await?,
         "summarize" => {
             let (text, _, _) = resolve_text(shared, &whole_args(&args))?;
             json!({"summary": features::summarize(&cfg, &text).await.map_err(err)?})

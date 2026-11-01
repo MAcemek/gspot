@@ -9,6 +9,7 @@ export function Underlines() {
   const [geo, setGeo] = useState<Geometry>({ origin_x: 0, origin_y: 0, width: 0, height: 0, rects: [], hovered: null, over_card: false });
   const [alerts, setAlerts] = useState<Record<string, Alert>>({});
   const [open, setOpen] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState<string | null>(null);
   const closeTimer = useRef<number | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -98,8 +99,18 @@ export function Underlines() {
             {alert.suggestions.length > 0 && (
               <button className="btn btn--primary" style={{ padding: "8px 14px" }} onClick={() => { ipc.acceptAlert(alert.id, 0).catch(() => {}); setOpen(null); }}>Accept</button>
             )}
+            {alert.suggestions.length === 0 && (
+              <button className="btn btn--outline" style={{ padding: "8px 14px" }} disabled={suggesting === alert.id} onClick={() => { setSuggesting(alert.id); ipc.runFeature("word_options", { id: alert.id }).catch(() => {}).finally(() => setSuggesting(null)); }}>
+                {suggesting === alert.id ? "Suggesting…" : "Suggest options"}
+              </button>
+            )}
             <button className="btn btn--ghost" onClick={() => { ipc.dismissAlert(alert.id).catch(() => {}); setOpen(null); }}>Dismiss</button>
           </div>
+          {alert.suggestions.length > 1 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              {alert.suggestions.slice(1, 4).map((s, i) => <button key={i} className="btn btn--outline" style={{ padding: "5px 10px" }} onClick={() => { ipc.acceptAlert(alert.id, i + 1).catch(() => {}); setOpen(null); }}>{s || "Remove"}</button>)}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -42,6 +42,7 @@ export function Review({ ctx }: { ctx: Ctx }) {
   const [tab, setTab] = useState<Category>(initialTab);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState<string | null>(null);
   const counts = useMemo(() => Object.fromEntries(CATS.map((c) => [c.id, ctx.alerts.filter((a) => a.category === c.id).length])) as Record<Category, number>, [ctx.alerts]);
   const list = ctx.alerts.filter((a) => a.category === tab);
   useEffect(() => { if (open && !ctx.alerts.some((a) => a.id === open)) setOpen(list[0]?.id ?? null); }, [ctx.alerts]);
@@ -75,6 +76,12 @@ export function Review({ ctx }: { ctx: Ctx }) {
     try { const r = await ipc.acceptAlert(a.id, idx); ctx.toast(r.method === "ax" ? "Applied" : "Applied via paste"); }
     catch (e) { ctx.toast(String(e)); }
     finally { setBusy(null); }
+  };
+  const suggest = async (a: Alert) => {
+    setSuggesting(a.id);
+    try { await ipc.runFeature("word_options", { id: a.id }); }
+    catch (e) { ctx.toast(String(e)); }
+    finally { setSuggesting(null); }
   };
   const dismiss = async (a: Alert) => { try { await ipc.dismissAlert(a.id); } catch (e) { ctx.toast(String(e)); } };
   const skipApp = async () => {
@@ -143,6 +150,11 @@ export function Review({ ctx }: { ctx: Ctx }) {
                 <div className="alert__actions">
                   {mode !== "note" && (
                     <button className="btn btn--primary" disabled={busy === a.id} onClick={() => accept(a, 0)}>{busy === a.id ? "Applying" : "Accept"}</button>
+                  )}
+                  {mode === "note" && (
+                    <button className="btn btn--outline" disabled={suggesting === a.id} onClick={() => suggest(a)}>
+                      {suggesting === a.id ? <div className="spin" style={{ width: 14, height: 14, borderWidth: 2 }} /> : <I.Sparkle style={{ width: 16, height: 16, color: "#7d99f0" }} />}{suggesting === a.id ? "Suggesting…" : "Suggest options"}
+                    </button>
                   )}
                   <button className="btn btn--ghost" onClick={() => dismiss(a)}>Dismiss</button>
                   {a.suggestions.length > 1 && (

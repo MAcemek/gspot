@@ -293,6 +293,26 @@ pub async fn rewrite_phrase(cfg: &LlmConfig, sentence: &str, phrase: &str) -> Re
     Ok(json!({"suggestions": s}))
 }
 
+pub async fn word_options(cfg: &LlmConfig, sentence: &str, phrase: &str, issue: &str) -> Result<Vec<String>> {
+    let v = llm::complete_json(cfg, prompts::WORD_OPTIONS_SYSTEM, &format!("ISSUE: {issue}\nPHRASE: {phrase}\n\nSENTENCE:\n{sentence}"), 0.5).await?;
+    let own = phrase.trim().to_lowercase();
+    let mut out: Vec<String> = Vec::new();
+    for o in v["options"].as_array().cloned().unwrap_or_default() {
+        let t = o.as_str().unwrap_or("").trim().trim_matches(|c: char| matches!(c, '"' | '\'' | '“' | '”' | '‘' | '’')).trim().to_string();
+        if t.is_empty() || t.to_lowercase() == own || out.iter().any(|x| x.to_lowercase() == t.to_lowercase()) {
+            continue;
+        }
+        out.push(t);
+        if out.len() == 4 {
+            break;
+        }
+    }
+    if out.is_empty() {
+        return Err(anyhow!("The model had no options for this one."));
+    }
+    Ok(out)
+}
+
 pub async fn summarize(cfg: &LlmConfig, text: &str) -> Result<String> {
     let r = llm::complete(cfg, prompts::SUMMARIZE_SYSTEM, &[llm::msg("user", clip(text, 16000))], false, 0.3).await?;
     Ok(r.trim().to_string())

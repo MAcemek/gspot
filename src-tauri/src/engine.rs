@@ -90,6 +90,11 @@ impl Engine {
             }
             suggestions.dedup();
             let kind = lint.lint_kind;
+            // Harper ranks by raw edit distance ("comming" -> "cumming"); put the likely word first.
+            // Typo covers split-word guesses ("adress" -> "a dress"); multi-word originals pass through.
+            if matches!(kind, LintKind::Spelling | LintKind::Typo) {
+                suggestions = crate::spellrank::rerank(&original, &suggestions);
+            }
             // Harper only measures the long sentence. Give the note a lossless
             // split at its middle joint so Accept is there at once; the spot
             // check's model split (when it arrives) hides this note.
@@ -128,7 +133,11 @@ impl Engine {
             });
         }
         out.extend(delivery_rules(text, &map));
+        out.extend(very_rules(text, &map));
         out.extend(engagement_rules(text, &map));
+        // A misspelled word gets one card: drop other lints on exactly its span ("untill" -> "distill").
+        let spelled: std::collections::HashSet<(usize, usize)> = out.iter().filter(|a| a.kind == "Spelling" || a.kind == "Typo").map(|a| (a.start, a.end)).collect();
+        out.retain(|a| a.kind == "Spelling" || a.kind == "Typo" || !spelled.contains(&(a.start, a.end)));
         // Remove overlapping duplicates (keep the first, higher-priority entry).
         out.sort_by(|a, b| a.start.cmp(&b.start).then(a.priority.cmp(&b.priority)));
         let mut kept: Vec<Alert> = Vec::with_capacity(out.len());
@@ -253,7 +262,6 @@ fn delivery_rule_set() -> &'static Vec<Rule> {
             mk(r"(?i)\bjust ", "Remove the filler", "“Just” often adds nothing. Removing it makes the sentence more assertive.", Some("")),
             mk(r"(?i)\bactually ", "Remove the filler", "“Actually” can sound dismissive or unsure.", Some("")),
             mk(r"(?i)\bbasically ", "Remove the filler", "“Basically” is a filler word that weakens delivery.", Some("")),
-            mk(r"(?i)\bvery ", "Choose a stronger word", "“Very” is an intensifier that dilutes impact. Pick a stronger word instead.", None),
             mk(r"(?i)\breally ", "Choose a stronger word", "“Really” is a weak intensifier.", Some("")),
             mk(r"!{2,}", "Tone down the punctuation", "Multiple exclamation marks can read as unprofessional.", Some("!")),
             mk(r"(?i)\bsorry to bother you\b", "Sound more confident", "Apologizing before asking undermines your request.", None),
@@ -288,6 +296,58 @@ fn delivery_rules(text: &str, map: &TextMap) -> Vec<Alert> {
                 stable_hash: stable,
             });
         }
+    }
+    out
+}
+
+/// "very <word>": the whole phrase is flagged, with stronger single words when the table has
+/// them; otherwise the card offers AI options ("Suggest options") for the same phrase.
+fn very_rules(text: &str, map: &TextMap) -> Vec<Alert> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"(?i)\bvery ([a-z][a-z'-]*)").unwrap());
+    let chars_prefix = char_prefix(text);
+    let mut out = Vec::new();
+    for c in re.captures_iter(text) {
+        let m = c.get(0).unwrap();
+        let word = &c[1];
+        // Keep the capital of a sentence-initial "Very".
+        let capital = m.as_str().starts_with('V');
+        let suggestions: Vec<String> = crate::wordopts::stronger_than_very(word)
+            .map(|opts| {
+                opts.iter()
+                    .map(|o| {
+                        let mut s = o.to_string();
+                        if capital {
+                            s = s[..1].to_uppercase() + &s[1..];
+                        }
+                        s
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let message = if suggestions.is_empty() {
+            format!("“Very {word}” leans on an intensifier. A single precise word has more impact.")
+        } else {
+            format!("“Very {word}” leans on an intensifier. One stronger word says it better.")
+        };
+        let stable = stable_hash("Delivery", &m.as_str().to_lowercase(), suggestions.first().map(|s| s.as_str()));
+        let start = chars_prefix[m.start()];
+        let end = chars_prefix[m.end()];
+        out.push(Alert {
+            id: format!("{:x}-{}", stable, start),
+            category: Category::Delivery,
+            kind: "Delivery".into(),
+            title: "Choose a stronger word".into(),
+            message,
+            start,
+            end,
+            u16_start: map.char_to_utf16(start),
+            u16_end: map.char_to_utf16(end),
+            original: m.as_str().to_string(),
+            suggestions,
+            priority: 200,
+            stable_hash: stable,
+        });
     }
     out
 }
@@ -381,6 +441,31 @@ mod tests {
         // char offsets and utf16 offsets agree for ASCII
         assert_eq!((teh.start, teh.end), (teh.u16_start, teh.u16_end));
         assert_eq!(&"This is an test of teh engine."[teh.start..teh.end], "teh");
+    }
+
+    #[test]
+    fn spelling_puts_the_likely_word_first() {
+        let alerts = Engine::new().check("I am comming home with the adress.");
+        let first = |w: &str| alerts.iter().find(|a| a.original == w).and_then(|a| a.suggestions.first().cloned());
+        assert_eq!(first("comming").as_deref(), Some("coming"));
+        assert_eq!(first("adress").as_deref(), Some("address"));
+        let all = Engine::new().check("Wait untill noon.");
+        let untill: Vec<&Alert> = all.iter().filter(|a| a.original == "untill").collect();
+        assert_eq!(untill.len(), 1, "one card per misspelled word");
+        assert_eq!(untill[0].suggestions.first().map(String::as_str), Some("until"));
+    }
+
+    #[test]
+    fn very_offers_stronger_words_for_the_whole_phrase() {
+        let alerts = Engine::new().check("Very good work, but I am very tired and very xylophone.");
+        let very: Vec<&Alert> = alerts.iter().filter(|a| a.title == "Choose a stronger word").collect();
+        let tired = very.iter().find(|a| a.original == "very tired").expect("very tired flagged");
+        assert!(tired.suggestions.iter().any(|s| s == "exhausted"), "{:?}", tired.suggestions);
+        assert_eq!(&"Very good work, but I am very tired and very xylophone."[tired.start..tired.end], "very tired");
+        let good = very.iter().find(|a| a.original == "Very good").expect("Very good flagged");
+        assert!(good.suggestions[0].starts_with(char::is_uppercase), "{:?}", good.suggestions);
+        let odd = very.iter().find(|a| a.original == "very xylophone").expect("unknown word still flagged");
+        assert!(odd.suggestions.is_empty(), "no table entry: the card offers AI options");
     }
 
     #[test]
