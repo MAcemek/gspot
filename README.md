@@ -1,36 +1,80 @@
-# GSpot
+# GSpot for Windows
 
-> **This is a fork of [blueturboguy07/gspot](https://github.com/blueturboguy07/gspot)** (AGPL-3.0) that adds:
->
-> * **Windows support.** Text access goes through Windows UI Automation (`src-tauri/src/ax_win.rs`) in place of the
->   macOS Accessibility API, answering the same calls so the host loop, engine and UI are shared.
->   Replacements select the range and paste (Ctrl+V), then fall back to UIA `ValuePattern` for plain fields.
-> * **Local AI (Ollama)**, back as the default: every AI feature can run on a model on your own computer,
->   free and private. Settings → AI → Local AI lists the models Ollama has; publik API and your own key still work.
-> * **Talk like a CEO**: cuts a message down to the ask, then types it the way a busy exec would
->   (Polished, Casual, or "Sent from my phone"). The model only shortens; the rough edges are added by a
->   deterministic pass (`src-tauri/src/features/ceo.rs`), so names and numbers are never mangled.
-> * Small hardening: `open_url` only opens `http(s)` links.
->
-> ### Install on Windows
->
-> Download **`GSpot_0.1.6_x64-setup.exe`** from the [latest release](https://github.com/MAcemek/gspot/releases/latest) and run it
-> (installs for your user, no admin). The build is not code-signed yet, so SmartScreen may ask: **More info → Run anyway**.
->
-> ### Build from source on Windows
->
-> ```powershell
-> # prerequisites: Rust (rustup), Node 20+, pnpm, Visual Studio C++ Build Tools, WebView2 (built into Windows 11)
-> pnpm install
-> pnpm dev          # run with hot reload
-> pnpm build        # installer in src-tauri/target/release/bundle/nsis
-> ```
->
-> For AI features, install [Ollama](https://ollama.com/download), run `ollama pull qwen2.5:7b`, and pick the model
-> under Settings → AI → Local AI. Spelling and grammar (Harper) work offline without any of that.
->
-> Windows support is new: plain editors (Notepad, WordPad, standard text boxes) work best; browsers, Electron apps and
-> Word vary by app. Use "Skip this app" for any app where underlines land in the wrong place, and please open an issue.
+[![CI](https://github.com/MAcemek/gspot/actions/workflows/ci.yml/badge.svg)](https://github.com/MAcemek/gspot/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/MAcemek/gspot?label=download)](https://github.com/MAcemek/gspot/releases/latest)
+
+A free, local-first, Grammarly-style writing assistant for **Windows**: it underlines mistakes in whatever app you are
+typing in, fixes them with one click, and adds AI tools that can run entirely on your own computer.
+This is a Windows port of [blueturboguy07/gspot](https://github.com/blueturboguy07/gspot) (macOS, AGPL-3.0); the original
+README follows further down.
+
+![A misspelled word in Notepad is underlined; the hover card offers "teh → the" with Accept, Dismiss and other options](docs/windows/hover-card.png)
+
+| Talk like a CEO | AI settings and free keys |
+|---|---|
+| ![Talk like a CEO turns a 44-word email into a 16-word note](docs/windows/talk-like-a-ceo.png) | ![Settings → AI: local AI, your own key, and a list of free API keys](docs/windows/ai-settings.png) |
+
+## What it does
+
+* **Works in any app.** Reads the text field you are in through Windows UI Automation: Notepad, Word, Chrome, Edge,
+  Gmail-style rich editors, forms. Hover an underline for the fix, click Accept, and it is typed straight in
+  (your clipboard is never touched).
+* **Offline spelling and grammar** with [Harper](https://writewithharper.com), plus smarter spelling picks (common
+  words first, typo-aware: `comming` → coming, `adress` → address) and stronger words for "very …".
+* **AI tools**: rewrite, tone, translate, AI chat, Suggest options for any card, and **Talk like a CEO**, which
+  cuts a message to the ask and types it the way a busy exec would (Polished, Casual, Sent from my phone)
+  without touching names or numbers.
+* **Your choice of AI**: Local AI through [Ollama](https://ollama.com/download) (free, private), or a free cloud key
+  from Groq, Google Gemini, NVIDIA or OpenRouter (Settings → AI → Get a free key). If a cloud key hits its limit,
+  GSpot falls back to your local model.
+* **Starts with Windows and updates itself** from this repo's releases.
+
+### Fast
+
+Measured on a Windows 11 laptop (installed build):
+
+| | Notepad | Chrome / Edge | Word |
+|---|---|---|---|
+| Hover card appears | 60 ms | 20–85 ms | – |
+| Accept a fix | 150 ms | 40–90 ms | 320 ms |
+
+## Install
+
+1. Download `GSpot_<version>_x64-setup.exe` from the [latest release](https://github.com/MAcemek/gspot/releases/latest)
+   and run it. It installs for your user, no admin needed.
+2. The installer is not code-signed yet. If SmartScreen says "Windows protected your PC", click
+   **More info → Run anyway**. If Windows says "An Application Control policy has blocked this file",
+   **Smart App Control** is on; it blocks unsigned apps, and trying again later sometimes passes.
+3. Click the **G tab** on the left edge of your screen to open the panel.
+
+For AI features, either install [Ollama](https://ollama.com/download) and run `ollama pull qwen2.5:3b`
+(16 GB RAM or less) or `qwen2.5:7b`, or paste a free key under Settings → AI → Your own key.
+
+### Known limits
+
+* Plain editors and standard text boxes work best. Google Docs draws its own text and is likely not supported.
+  Discord and Slack should behave like Chrome but are not tested yet. Use **Skip this app** where underlines
+  land in the wrong place, and please [open an issue](https://github.com/MAcemek/gspot/issues).
+* With a cloud key, the text you check with AI features is sent to that provider. Spelling and grammar stay on your computer.
+
+## Build from source
+
+```powershell
+# prerequisites: Rust (rustup), Node 20+, pnpm 10, Visual Studio C++ Build Tools, WebView2 (built into Windows 11)
+pnpm install
+pnpm dev                                  # run with hot reload
+pnpm build                                # unsigned installer in src-tauri/target/release/bundle/nsis
+cd src-tauri; cargo test --lib            # Rust tests
+scripts/release-windows.ps1               # signed installer + latest.json for auto-update (needs the updater key)
+```
+
+How the Windows port works: `src-tauri/src/ax_win.rs` answers the same calls as the macOS Accessibility layer
+(`ax.rs`) using UI Automation, so the host loop, engine and UI are shared. Fixes select the range and type the
+replacement with `SendInput`; plain fields fall back to UIA `ValuePattern`.
+
+---
+
+# Original macOS README
 
 ![GSpot beside a TextEdit draft: the Review panel lists the suggestions, the draft is underlined in place, and a card offers the fix](docs/hero.png)
 
