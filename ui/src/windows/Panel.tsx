@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ipc, on } from "../lib/ipc";
-import type { Alert, AppState, Doc, PublikStatus, Score, Session, Settings, Status, View } from "../lib/types";
+import type { Alert, AppState, Doc, PublikStatus, Score, Session, Settings, Status, UpdateInfo, View } from "../lib/types";
 import * as I from "../components/icons";
 import { Review } from "./views/Review";
 import { Chat } from "./views/Chat";
@@ -46,6 +46,8 @@ export function Panel() {
   const [view, setView] = useState<View>(initialView);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [installing, setInstalling] = useState(false);
 
   const refresh = useCallback(() => { ipc.getState().then(setState).catch(() => {}); }, []);
   const onboardingShown = useRef(false);
@@ -60,6 +62,7 @@ export function Panel() {
       on<{ view: View }>("panel://view", (p) => setView(p.view)),
       on<Settings>("settings://changed", (settings) => setState((s) => (s ? { ...s, settings } : s))),
       on<string>("ai://notice", (m) => toast(m)),
+      on<UpdateInfo>("update://available", (u) => setUpdate(u)),
     ];
     const t = window.setInterval(refresh, 4000);
     return () => { subs.forEach((p) => p.then((f) => f())); window.clearInterval(t); };
@@ -97,6 +100,13 @@ export function Panel() {
   return (
     <div className={"panel" + (railLeft ? " rail-left" : "")}>
       <div className="panel__content">
+        {update && (
+          <div className="notice" style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 12px 0" }}>
+            <span style={{ flex: 1 }}>GSpot {update.version} is available</span>
+            <button className="btn btn--primary" style={{ padding: "4px 10px" }} disabled={installing} onClick={() => { setInstalling(true); ipc.installUpdate().catch((e) => { toast(String(e)); setInstalling(false); }); }}>{installing ? "Installing…" : "Install and restart"}</button>
+            <button className="btn btn--ghost" style={{ padding: "4px 8px" }} title="Dismiss" onClick={() => setUpdate(null)}>×</button>
+          </div>
+        )}
         {!state.status.trusted ? <PermissionGate /> : <ViewSwitch ctx={ctx} />}
         {toastMsg && <div className="toast">{toastMsg}</div>}
       </div>

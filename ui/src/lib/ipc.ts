@@ -1,6 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AppState, KeyProbe, PublikStatus, Settings, Session } from "./types";
+import type { AppState, KeyProbe, PublikStatus, Settings, Session, UpdateInfo } from "./types";
 
 // Outside Tauri (a plain browser, used for layout screenshots and tests) the
 // commands answer from a fixture instead of the host.
@@ -32,6 +32,9 @@ export const ipc = {
   publikForget: () => invoke<PublikStatus>("publik_forget"),
   publikRefresh: () => invoke<PublikStatus>("publik_refresh"),
   probeKey: (key: string) => invoke<KeyProbe>("probe_key", { key }),
+  checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  installUpdate: () => invoke<void>("install_update"),
+  appVersion: () => invoke<string>("app_version"),
   quit: () => invoke<void>("quit_app"),
 };
 

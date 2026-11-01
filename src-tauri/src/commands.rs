@@ -457,6 +457,7 @@ pub fn set_settings(app: AppHandle, state: State<'_, Shared>, settings: Settings
         st.settings = settings.clone();
         llm::set_fallback_enabled(settings.ai_fallback_local);
         settings::save(&st.settings).map_err(err)?;
+        sync_autostart(&app, st.settings.start_with_windows);
         // Re-apply the dismissed filter.
         st.alerts = st.visible_alerts();
     }
@@ -536,6 +537,42 @@ pub fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
+/// Make the OS login item match the "Start GSpot with Windows" setting. Release builds
+/// only, so dev and test runs never register themselves.
+pub fn sync_autostart(app: &AppHandle, want: bool) {
+    if cfg!(debug_assertions) {
+        return;
+    }
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    match launcher.is_enabled() {
+        Ok(on) if on == want => {}
+        _ => {
+            let r = if want { launcher.enable() } else { launcher.disable() };
+            if let Err(e) = r {
+                log::warn!("autostart sync failed: {e}");
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- updates
+
+#[tauri::command]
+pub async fn check_update(app: AppHandle) -> Result<Option<Value>, String> {
+    crate::updates::check(&app).await
+}
+
+#[tauri::command]
+pub async fn install_update(app: AppHandle) -> Result<(), String> {
+    crate::updates::install(&app).await
+}
+
+#[tauri::command]
+pub fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 // ---------------------------------------------------------------- publik API + key set-up
 
 /// Persist a settings change made on the Rust side and tell every window.
@@ -544,6 +581,7 @@ fn save_settings(app: &AppHandle, shared: &Shared, f: impl FnOnce(&mut Settings)
     f(&mut st.settings);
     llm::set_fallback_enabled(st.settings.ai_fallback_local);
     let _ = settings::save(&st.settings);
+    sync_autostart(app, st.settings.start_with_windows);
     st.alerts = st.visible_alerts();
     let s = st.settings.clone();
     drop(st);

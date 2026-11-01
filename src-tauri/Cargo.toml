@@ -33,6 +33,8 @@ rand = "0.8"
 scraper = "0.21"
 unicode-segmentation = "1"
 url = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-updater = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"

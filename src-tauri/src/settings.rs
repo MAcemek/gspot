@@ -106,6 +106,8 @@ pub struct Settings {
     pub skip_apps: Vec<SkipApp>,
     /// When the cloud AI hits its limit or cannot be reached, retry on the local model.
     pub ai_fallback_local: bool,
+    /// Launch GSpot when the user logs in.
+    pub start_with_windows: bool,
 }
 
 impl Default for Settings {
@@ -128,6 +130,7 @@ impl Default for Settings {
             publik: PublikSettings::default(),
             skip_apps: vec![],
             ai_fallback_local: true,
+            start_with_windows: true,
         }
     }
 }
@@ -278,6 +281,12 @@ mod tests {
     fn fallback_defaults_on_for_old_files() {
         let back: Settings = serde_json::from_str("{}").unwrap();
         assert!(back.ai_fallback_local);
+    }
+
+    #[test]
+    fn start_with_windows_defaults_on_for_old_files() {
+        let back: Settings = serde_json::from_str(r#"{"onboarded":true}"#).unwrap();
+        assert!(back.start_with_windows);
     }
 
     #[test]

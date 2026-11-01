@@ -47,7 +47,7 @@ const SETTINGS: Settings = {
   llm: { provider: "publik", base_url: "https://publikhq.com/api/v1", api_key: "", model: "publik-balanced" },
   dock_side: "left", rail_side: "right", user_name: "Mann Bellani", search: { brave_key: "" },
   custom_voices: [], custom_audiences: [], dismissed: [], target_language: "Spanish", citation_style: "MLA",
-  show_gbutton: true, show_underlines: true, onboarded: true, auto_spot_check: true, ai_fallback_local: true, publik: { disclosure_version: 1, first_run_owed: false }, skip_apps: [],
+  show_gbutton: true, show_underlines: true, onboarded: true, auto_spot_check: true, ai_fallback_local: true, start_with_windows: true, publik: { disclosure_version: 1, first_run_owed: false }, skip_apps: [],
 };
 
 const PUBLIK: PublikStatus = {
@@ -82,6 +82,8 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     case "get_settings": return state().settings;
     case "set_settings": return;
     case "get_history": return [];
+    case "app_version": return "0.1.6";
+    case "check_update": return null;
     case "publik_status": case "publik_accept_disclosure": case "publik_dismiss_first_run": case "publik_forget": case "publik_refresh": return PUBLIK;
     case "run_feature": {
       const name = String(args?.name ?? "");

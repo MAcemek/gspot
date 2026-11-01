@@ -18,6 +18,7 @@ pub mod score;
 pub mod settings;
 pub mod spellrank;
 pub mod textmap;
+pub mod updates;
 pub mod wordopts;
 
 use std::sync::{Arc, Mutex};
@@ -41,6 +42,8 @@ pub fn run() {
     let dock_side = shared.lock().unwrap().settings.dock_side.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(shared.clone())
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -71,6 +74,9 @@ pub fn run() {
 
             host::spawn(handle.clone(), shared.clone());
             debug_server::spawn(handle.clone(), shared.clone());
+            let start = shared.lock().unwrap().settings.start_with_windows;
+            commands::sync_autostart(&handle, start);
+            updates::spawn_auto_check(handle.clone());
             if !ax::is_trusted() {
                 ax::prompt_trust();
             }
@@ -110,6 +116,9 @@ pub fn run() {
             commands::publik_forget,
             commands::publik_refresh,
             commands::probe_key,
+            commands::check_update,
+            commands::install_update,
+            commands::app_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GSpot");

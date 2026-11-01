@@ -36,7 +36,7 @@ export interface Settings {
   llm: LlmConfig; dock_side: "left" | "right"; rail_side: "left" | "right"; user_name: string;
   search: { brave_key: string }; custom_voices: Voice[]; custom_audiences: Audience[];
   dismissed: number[]; target_language: string; citation_style: string; show_gbutton: boolean; show_underlines: boolean; onboarded: boolean;
-  auto_spot_check: boolean; ai_fallback_local: boolean; publik: PublikSettings; skip_apps: SkipApp[];
+  auto_spot_check: boolean; ai_fallback_local: boolean; start_with_windows: boolean; publik: PublikSettings; skip_apps: SkipApp[];
 }
 
 export interface PublikNotice { kind: string; message: string; link_label: string; link_url: string }
@@ -47,6 +47,7 @@ export interface PublikStatus {
   model: string; model_served: string | null; justification: string; disclosure: { cost: string; data: string; terms_url: string };
   cta: { label: string; url: string; claimed: boolean }; later_label: string; first_run_owed: boolean; dashboard_url: string; notice: PublikNotice | null;
 }
+export interface UpdateInfo { version: string; current: string; notes: string }
 export interface KeyProbe { provider: ProviderId; base_url: string; model: string; models: number; reply: string }
 export interface SpotResult { busy?: boolean; stale?: boolean; sentences: number; checked: number; from_cache: number; batches: number; skipped: number; rejected: number; suggestions: number; ms: number }
 
