@@ -14,7 +14,7 @@
 >
 > ### Install on Windows
 >
-> Download **`GSpot_0.1.1_x64-setup.exe`** from the [latest release](https://github.com/MAcemek/gspot/releases/latest) and run it
+> Download **`GSpot_0.1.2_x64-setup.exe`** from the [latest release](https://github.com/MAcemek/gspot/releases/latest) and run it
 > (installs for your user, no admin). The build is not code-signed yet, so SmartScreen may ask: **More info → Run anyway**.
 >
 > ### Build from source on Windows
