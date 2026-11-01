@@ -226,6 +226,14 @@ pub async fn spot_check_auto(app: AppHandle, shared: Shared, cfg: LlmConfig) {
     if let Err(e) = spot_check_inner(&app, &shared, Some(&cfg), &json!({})).await {
         log::warn!("auto spot check: {e}");
     }
+    notify_fallback(&app);
+}
+
+/// Tell the panel once if the last answer came from the local fallback.
+fn notify_fallback(app: &AppHandle) {
+    if llm::take_fallback_notice() {
+        let _ = app.emit("ai://notice", "Your cloud AI hit its limit or could not be reached, so this answer came from your local AI.");
+    }
 }
 
 /// Ask the model for replacements for one flagged phrase and store them on the alert.
@@ -362,7 +370,7 @@ pub async fn run_feature_inner(app: &AppHandle, shared: &Shared, name: &str, arg
         }
         _ => return Err(format!("unknown feature {name}")),
     };
-    let _ = app;
+    notify_fallback(app);
     Ok(out)
 }
 
@@ -424,6 +432,7 @@ pub async fn chat_send(app: AppHandle, state: State<'_, Shared>, req_id: String,
         let _ = app2.emit_to("panel", "llm://chunk", json!({"req_id": rid, "delta": delta, "done": false}));
     })
     .await;
+    notify_fallback(&app);
     match result {
         Ok(full) => {
             let _ = app.emit_to("panel", "llm://chunk", json!({"req_id": req_id, "delta": "", "done": true}));
@@ -446,6 +455,7 @@ pub fn set_settings(app: AppHandle, state: State<'_, Shared>, settings: Settings
     {
         let mut st = state.lock().unwrap();
         st.settings = settings.clone();
+        llm::set_fallback_enabled(settings.ai_fallback_local);
         settings::save(&st.settings).map_err(err)?;
         // Re-apply the dismissed filter.
         st.alerts = st.visible_alerts();
@@ -532,6 +542,7 @@ pub fn quit_app(app: AppHandle) {
 fn save_settings(app: &AppHandle, shared: &Shared, f: impl FnOnce(&mut Settings)) -> Settings {
     let mut st = shared.lock().unwrap();
     f(&mut st.settings);
+    llm::set_fallback_enabled(st.settings.ai_fallback_local);
     let _ = settings::save(&st.settings);
     st.alerts = st.visible_alerts();
     let s = st.settings.clone();
@@ -607,6 +618,8 @@ pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
         (Provider::OpenAI, "https://api.groq.com/openai", &["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant"])
     } else if k.starts_with("AIza") {
         (Provider::OpenAI, "https://generativelanguage.googleapis.com/v1beta/openai", &["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"])
+    } else if k.starts_with("nvapi-") {
+        (Provider::OpenAI, "https://integrate.api.nvidia.com", &["openai/gpt-oss-120b", "meta/llama-3.3-70b-instruct", "nvidia/llama-3.3-nemotron-super-49b-v1.5", "meta/llama-3.1-8b-instruct"])
     } else {
         (Provider::OpenAI, "https://api.openai.com", &["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-4.1-mini", "gpt-4o-mini", "gpt-4o"])
     };
@@ -621,7 +634,7 @@ pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
         .find(|p| models.iter().any(|m| m == *p))
         .map(|s| s.to_string())
         .or_else(|| prefs.iter().find_map(|p| models.iter().find(|m| m.starts_with(p)).cloned()))
-        .or_else(|| models.iter().find(|m| !m.contains("embed") && !m.contains("whisper") && !m.contains("tts") && !m.contains("image") && !m.contains("guard")).cloned())
+        .or_else(|| models.iter().find(|m| !m.contains("embed") && !m.contains("whisper") && !m.contains("tts") && !m.contains("image") && !m.contains("guard") && !["rerank", "reward", "safety", "parse", "clip", "vlm", "vision"].iter().any(|x| m.contains(x))).cloned())
         .ok_or("The key works, but no chat model is available on it.")?;
     cfg.model = pick;
     let reply = llm::complete(&cfg, "Reply with the single word: pong", &[llm::msg("user", "ping")], false, 0.0).await.map_err(|e| format!("The key works but the model test failed: {e}"))?;
@@ -639,13 +652,7 @@ pub async fn probe_key_inner(key: &str) -> Result<Value, String> {
 pub async fn detect_ollama_inner() -> Value {
     let base = crate::settings::OLLAMA_BASE_URL;
     let models = llm::ollama_models(base).await.unwrap_or_default();
-    let prefs = ["qwen2.5:7b", "qwen3:8b", "llama3.1:8b", "gemma3:4b", "llama3.2:3b", "qwen2.5:3b", "mistral:7b"];
-    let pick = prefs
-        .iter()
-        .find(|p| models.iter().any(|m| m == *p))
-        .map(|s| s.to_string())
-        .or_else(|| models.iter().find(|m| !m.contains("embed") && !m.contains("smollm")).cloned())
-        .or_else(|| models.first().cloned());
+    let pick = llm::pick_ollama_model(&models);
     json!({"running": !models.is_empty(), "base_url": base, "models": models, "pick": pick})
 }
 
@@ -681,3 +688,13 @@ pub async fn probe_key(key: String) -> Result<Value, String> {
     probe_key_inner(&key).await
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nvidia_endpoint_gets_v1() {
+        assert_eq!(llm::openai_endpoint("https://integrate.api.nvidia.com", "chat/completions"), "https://integrate.api.nvidia.com/v1/chat/completions");
+    }
+}

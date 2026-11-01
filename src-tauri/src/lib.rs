@@ -36,6 +36,7 @@ pub fn run() {
     let mut state = host::HostState::default();
     state.settings = settings::load();
     state.history = history::load();
+    llm::set_fallback_enabled(state.settings.ai_fallback_local);
     let shared: host::Shared = Arc::new(Mutex::new(state));
     let dock_side = shared.lock().unwrap().settings.dock_side.clone();
 

@@ -7,12 +7,67 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 /// Newer models (gpt-5.x, Claude 5) reject `temperature`; once a provider says
 /// so, every later call leaves sampling parameters out.
 static OPENAI_NO_SAMPLING: AtomicBool = AtomicBool::new(false);
 static ANTHROPIC_NO_SAMPLING: AtomicBool = AtomicBool::new(false);
+
+/// Retry on the local model when the cloud AI fails (setting `ai_fallback_local`).
+static FALLBACK_ON: AtomicBool = AtomicBool::new(true);
+/// Set when a call was answered by the local fallback; the host shows a notice once.
+static FELL_BACK: AtomicBool = AtomicBool::new(false);
+
+pub fn set_fallback_enabled(on: bool) {
+    FALLBACK_ON.store(on, Ordering::Relaxed);
+}
+
+/// True once if the last answer came from the local fallback.
+pub fn take_fallback_notice() -> bool {
+    FELL_BACK.swap(false, Ordering::Relaxed)
+}
+
+/// Errors worth retrying locally: rate limits, quota, and unreachable hosts.
+pub fn is_fallback_worthy(err: &str) -> bool {
+    let e = err.to_lowercase();
+    ["429", "rate limit", "rate_limit", "ratelimit", "too many requests", "quota", "resource_exhausted", "error sending request", "connection refused", "dns error", "timed out", "operation timed out"].iter().any(|k| e.contains(k))
+}
+
+/// Best installed Ollama model: preferred list first, then any non-embedding one.
+pub fn pick_ollama_model(models: &[String]) -> Option<String> {
+    let prefs = ["qwen2.5:7b", "qwen3:8b", "llama3.1:8b", "gemma3:4b", "llama3.2:3b", "qwen2.5:3b", "mistral:7b"];
+    prefs
+        .iter()
+        .find(|p| models.iter().any(|m| m == *p))
+        .map(|s| s.to_string())
+        .or_else(|| models.iter().find(|m| !m.contains("embed") && !m.contains("smollm")).cloned())
+        .or_else(|| models.first().cloned())
+}
+
+type FallbackCache = Mutex<Option<(Instant, Option<LlmConfig>)>>;
+
+/// The local model to fall back to, cached for 60 s (including "none").
+async fn local_fallback_cfg() -> Option<LlmConfig> {
+    static CACHE: OnceLock<FallbackCache> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    if let Some((at, cfg)) = cache.lock().unwrap().as_ref() {
+        if at.elapsed() < Duration::from_secs(60) {
+            return cfg.clone();
+        }
+    }
+    let base_url = crate::settings::OLLAMA_BASE_URL;
+    let models = async {
+        let v: Value = quick_client()?.get(format!("{base_url}/api/tags")).send().await?.json().await?;
+        Ok::<Vec<String>, anyhow::Error>(v["models"].as_array().map(|a| a.iter().filter_map(|m| m["name"].as_str().map(String::from)).collect()).unwrap_or_default())
+    }
+    .await
+    .unwrap_or_default();
+    let cfg = pick_ollama_model(&models).map(|model| LlmConfig { provider: Provider::Ollama, base_url: base_url.into(), api_key: String::new(), model });
+    *cache.lock().unwrap() = Some((Instant::now(), cfg.clone()));
+    cfg
+}
 
 fn rejects_sampling(text: &str) -> bool {
     let t = text.to_lowercase();
@@ -33,8 +88,29 @@ fn client() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder().timeout(Duration::from_secs(180)).build()?)
 }
 
+fn quick_client() -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder().timeout(Duration::from_secs(2)).build()?)
+}
+
 /// Non-streaming completion. With `json` the provider is asked for a JSON object.
+/// A cloud failure that looks like a limit or an outage retries on the local model.
 pub async fn complete(cfg: &LlmConfig, system: &str, messages: &[Message], json: bool, temperature: f32) -> Result<String> {
+    let first = complete_once(cfg, system, messages, json, temperature).await;
+    let e = match &first {
+        Err(e) if cfg.provider != Provider::Ollama && FALLBACK_ON.load(Ordering::Relaxed) && is_fallback_worthy(&e.to_string()) => e.to_string(),
+        _ => return first,
+    };
+    match local_fallback_cfg().await {
+        Some(fb) => {
+            log::info!("cloud AI failed ({e}); retrying on local {}", fb.model);
+            FELL_BACK.store(true, Ordering::Relaxed);
+            complete_once(&fb, system, messages, json, temperature).await
+        }
+        None => first,
+    }
+}
+
+async fn complete_once(cfg: &LlmConfig, system: &str, messages: &[Message], json: bool, temperature: f32) -> Result<String> {
     match cfg.provider {
         Provider::Ollama => ollama_complete(cfg, system, messages, json, temperature).await,
         Provider::OpenAI => openai_complete(cfg, system, messages, json, temperature).await,
@@ -44,7 +120,29 @@ pub async fn complete(cfg: &LlmConfig, system: &str, messages: &[Message], json:
 }
 
 /// Streaming completion; `on_delta` is called with each text chunk. Returns the full text.
+/// Falls back to the local model like `complete`, but only before any text was emitted.
 pub async fn stream<F: FnMut(&str)>(cfg: &LlmConfig, system: &str, messages: &[Message], temperature: f32, mut on_delta: F) -> Result<String> {
+    let mut emitted = false;
+    let first = stream_once(cfg, system, messages, temperature, &mut |d: &str| {
+        emitted = true;
+        on_delta(d);
+    })
+    .await;
+    let e = match &first {
+        Err(e) if !emitted && cfg.provider != Provider::Ollama && FALLBACK_ON.load(Ordering::Relaxed) && is_fallback_worthy(&e.to_string()) => e.to_string(),
+        _ => return first,
+    };
+    match local_fallback_cfg().await {
+        Some(fb) => {
+            log::info!("cloud AI failed ({e}); retrying on local {}", fb.model);
+            FELL_BACK.store(true, Ordering::Relaxed);
+            stream_once(&fb, system, messages, temperature, &mut on_delta).await
+        }
+        None => first,
+    }
+}
+
+async fn stream_once<F: FnMut(&str)>(cfg: &LlmConfig, system: &str, messages: &[Message], temperature: f32, mut on_delta: F) -> Result<String> {
     match cfg.provider {
         Provider::Ollama => ollama_stream(cfg, system, messages, temperature, &mut on_delta).await,
         Provider::OpenAI => openai_stream(cfg, system, messages, temperature, &mut on_delta).await,
@@ -177,7 +275,7 @@ fn openai_url(cfg: &LlmConfig) -> String {
 /// OpenAI-compatible roots differ: `https://api.openai.com` and
 /// `https://api.groq.com/openai` want `/v1/…` appended, OpenRouter's root
 /// already ends in `/v1`, Google's compatibility root is `…/v1beta/openai`.
-fn openai_endpoint(base: &str, path: &str) -> String {
+pub(crate) fn openai_endpoint(base: &str, path: &str) -> String {
     let b = base.trim_end_matches('/');
     if b.ends_with("/v1") || b.contains("/v1beta") {
         format!("{b}/{path}")
@@ -242,12 +340,13 @@ async fn openai_stream<F: FnMut(&str)>(cfg: &LlmConfig, system: &str, messages: 
         }
         let r = client()?.post(openai_url(cfg)).bearer_auth(&cfg.api_key).json(&body).send().await?;
         if !r.status().is_success() {
+            let status = r.status();
             let t = r.text().await.unwrap_or_default();
             if attempt == 0 && rejects_sampling(&t) {
                 OPENAI_NO_SAMPLING.store(true, Ordering::Relaxed);
                 continue;
             }
-            return Err(anyhow!("API error: {t}"));
+            return Err(anyhow!("API error {status}: {t}"));
         }
         res = Some(r);
         break;
@@ -417,12 +516,13 @@ async fn anthropic_stream<F: FnMut(&str)>(cfg: &LlmConfig, system: &str, message
             .send()
             .await?;
         if !r.status().is_success() {
+            let status = r.status();
             let t = r.text().await.unwrap_or_default();
             if attempt == 0 && rejects_sampling(&t) {
                 ANTHROPIC_NO_SAMPLING.store(true, Ordering::Relaxed);
                 continue;
             }
-            return Err(anyhow!("Anthropic error: {t}"));
+            return Err(anyhow!("Anthropic error {status}: {t}"));
         }
         res = Some(r);
         break;
@@ -458,6 +558,28 @@ async fn anthropic_stream<F: FnMut(&str)>(cfg: &LlmConfig, system: &str, message
 mod tests {
     use super::*;
 
+    /// A cloud provider that only answers 429 hands the request to the local model.
+    /// Needs Ollama running with a chat model: `cargo test --lib live_429 -- --ignored`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_429_falls_back_to_local() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        std::thread::spawn(move || {
+            for req in server.incoming_requests() {
+                let body = r#"{"error":{"message":"Rate limit reached for requests per day"}}"#;
+                let _ = req.respond(tiny_http::Response::from_string(body).with_status_code(429));
+            }
+        });
+        let cloud = LlmConfig { provider: Provider::OpenAI, base_url: format!("http://127.0.0.1:{port}"), api_key: "test".into(), model: "fake".into() };
+        set_fallback_enabled(true);
+        let out = complete(&cloud, "Reply with the single word: pong", &[msg("user", "ping")], false, 0.0).await;
+        assert!(out.is_ok(), "fell back to the local model: {out:?}");
+        assert!(take_fallback_notice(), "the panel gets the notice");
+        set_fallback_enabled(false);
+        assert!(complete(&cloud, "x", &[msg("user", "ping")], false, 0.0).await.is_err(), "off means the 429 surfaces");
+    }
+
     #[test]
     fn extract_json_tolerates_prose_and_fences() {
         let v = extract_json("Sure! ```json\n{\"a\": 1}\n```").unwrap();
@@ -465,6 +587,22 @@ mod tests {
         assert!(extract_json("no braces here").is_none());
         let v = extract_json("{\"x\":[1,2]}").unwrap();
         assert_eq!(v["x"][1], 2);
+    }
+
+    #[test]
+    fn fallback_worthy_errors() {
+        assert!(is_fallback_worthy("API error 429 Too Many Requests: Rate limit reached"));
+        assert!(is_fallback_worthy("error sending request for url"));
+        assert!(!is_fallback_worthy("API error 401: invalid api key"));
+        assert!(!is_fallback_worthy("The model had no options for this one."));
+    }
+
+    #[test]
+    fn ollama_pick_prefers_known_models() {
+        let m = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(pick_ollama_model(&m(&["nomic-embed-text", "qwen2.5:7b", "foo:1b"])).as_deref(), Some("qwen2.5:7b"));
+        assert_eq!(pick_ollama_model(&m(&["nomic-embed-text", "foo:1b"])).as_deref(), Some("foo:1b"));
+        assert!(pick_ollama_model(&[]).is_none());
     }
 
     #[test]

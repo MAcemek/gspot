@@ -90,6 +90,7 @@ export function keyKind(key: string): string {
   if (k.startsWith("sk-or-")) return "OpenRouter key";
   if (k.startsWith("gsk_")) return "Groq key";
   if (k.startsWith("AIza")) return "Google AI key";
+  if (k.startsWith("nvapi-")) return "NVIDIA API key";
   if (k.startsWith("sk-")) return "OpenAI key";
   if (k.startsWith("pk_")) return "publik key (use the publik API card instead)";
   return "API key";

@@ -7,6 +7,14 @@ import * as I from "../../components/icons";
 
 type Choice = "local" | "publik" | "key";
 
+const FREE_KEYS = [
+  { name: "Groq", url: "https://console.groq.com/keys", note: "Free · fastest · about 1,000 requests a day" },
+  { name: "Google Gemini", url: "https://aistudio.google.com/apikey", note: "Free · Google may use free-tier text to improve its products" },
+  { name: "NVIDIA", url: "https://build.nvidia.com/", note: "Free for developers · about 40 requests a minute · for testing, not production" },
+  { name: "OpenRouter", url: "https://openrouter.ai/keys", note: "50 free requests a day · hundreds of models" },
+  { name: "Claude (paid)", url: "https://console.anthropic.com/settings/keys", note: "Paid · very accurate · a fraction of a cent per use" },
+];
+
 /** Which card is on: local AI once a model is picked, publik API once its key exists, your own key once one is pasted, else none. */
 function currentChoice(llm: LlmConfig, publik: PublikStatus): Choice | null {
   if (llm.provider === "ollama") return llm.model.trim() ? "local" : null;
@@ -94,7 +102,7 @@ export function AiSetup({ ctx, mode, onDone }: { ctx: Ctx; mode: "onboarding" | 
       {/* Your own key */}
       <button className={"choice" + (choice === "key" ? " selected" : "")} onClick={() => setOpen(open === "key" ? null : "key")}>
         <div className="choice__title"><I.Lock style={{ width: 20, height: 20 }} />Your own key</div>
-        <div className="choice__desc">OpenAI, Anthropic, OpenRouter, Groq or Google. Paste the key; the provider and model are picked for you.</div>
+        <div className="choice__desc">OpenAI, Anthropic, OpenRouter, Groq, Google or NVIDIA. Paste the key; the provider and model are picked for you.</div>
         {keyConnected && <div className="choice__status">Connected · {llm.model}</div>}
       </button>
       {open === "key" && (
@@ -107,6 +115,21 @@ export function AiSetup({ ctx, mode, onDone }: { ctx: Ctx; mode: "onboarding" | 
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>The key stays on this computer. GSpot lists your account's models and picks the best fit; change it under Advanced.</div>
         </div>
+      )}
+
+      <details className="adv">
+        <summary>Get a free key</summary>
+        {FREE_KEYS.map((f) => (
+          <div key={f.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+            <div style={{ flex: 1 }}><b>{f.name}</b><div style={{ color: "var(--text-subdued)", fontSize: 13 }}>{f.note}</div></div>
+            <button className="btn btn--outline" onClick={() => ipc.openUrl(f.url)}>Get key</button>
+          </div>
+        ))}
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>Paste the key into Your own key above. With a cloud key, the text you check with AI features goes to that provider; spelling and grammar stay on this computer.</div>
+      </details>
+
+      {llm.provider !== "ollama" && (
+        <label className="kv"><span>Use Local AI when the cloud AI hits its limit<br /><span style={{ color: "var(--text-subdued)", fontSize: 13 }}>If your key runs out or is offline, answers come from Ollama on this computer instead.</span></span><input type="checkbox" checked={ctx.settings.ai_fallback_local ?? true} onChange={(e) => ctx.updateSettings({ ai_fallback_local: e.target.checked })} /></label>
       )}
 
       {mode === "onboarding" && (

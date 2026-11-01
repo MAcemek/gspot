@@ -59,6 +59,7 @@ export function Panel() {
       on<{ start: number; end: number; text: string }>("host://selection", (sel) => setState((s) => (s && s.doc ? { ...s, doc: { ...s.doc, sel_start: sel.start, sel_end: sel.end, selected_text: sel.text } } : s))),
       on<{ view: View }>("panel://view", (p) => setView(p.view)),
       on<Settings>("settings://changed", (settings) => setState((s) => (s ? { ...s, settings } : s))),
+      on<string>("ai://notice", (m) => toast(m)),
     ];
     const t = window.setInterval(refresh, 4000);
     return () => { subs.forEach((p) => p.then((f) => f())); window.clearInterval(t); };

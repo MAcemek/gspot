@@ -36,7 +36,7 @@ export interface Settings {
   llm: LlmConfig; dock_side: "left" | "right"; rail_side: "left" | "right"; user_name: string;
   search: { brave_key: string }; custom_voices: Voice[]; custom_audiences: Audience[];
   dismissed: number[]; target_language: string; citation_style: string; show_gbutton: boolean; show_underlines: boolean; onboarded: boolean;
-  auto_spot_check: boolean; publik: PublikSettings; skip_apps: SkipApp[];
+  auto_spot_check: boolean; ai_fallback_local: boolean; publik: PublikSettings; skip_apps: SkipApp[];
 }
 
 export interface PublikNotice { kind: string; message: string; link_label: string; link_url: string }

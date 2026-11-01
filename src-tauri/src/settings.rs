@@ -104,6 +104,8 @@ pub struct Settings {
     pub publik: PublikSettings,
     /// Apps GSpot stays out of (added from the Review view's "Skip this app").
     pub skip_apps: Vec<SkipApp>,
+    /// When the cloud AI hits its limit or cannot be reached, retry on the local model.
+    pub ai_fallback_local: bool,
 }
 
 impl Default for Settings {
@@ -125,6 +127,7 @@ impl Default for Settings {
             auto_spot_check: true,
             publik: PublikSettings::default(),
             skip_apps: vec![],
+            ai_fallback_local: true,
         }
     }
 }
@@ -269,6 +272,12 @@ mod tests {
         let back: Settings = serde_json::from_str(saved).unwrap();
         assert_eq!(back.llm.provider, Provider::Ollama);
         assert_eq!(back.llm.model, "qwen2.5:7b");
+    }
+
+    #[test]
+    fn fallback_defaults_on_for_old_files() {
+        let back: Settings = serde_json::from_str("{}").unwrap();
+        assert!(back.ai_fallback_local);
     }
 
     #[test]
