@@ -516,6 +516,19 @@ pub fn content_kept(orig: &str, rewrite: &str) -> f64 {
 }
 
 /// (content words lost, content words in the original) for a rewrite.
+/// Share of content words a goal rewrite must keep (normal rephrases use MIN_CONTENT_KEPT).
+const GOAL_CONTENT_KEPT: f64 = 0.5;
+
+/// Slang and filler a writing goal ("formal") is expected to drop; not counted as lost content.
+const CASUAL_WORDS: &[&str] = &["hey", "hi", "guys", "gotta", "gonna", "wanna", "kinda", "sorta", "yeah", "yep", "nope", "lol", "ngl", "tbh", "idk", "stuff", "awesome", "totally", "super", "asap", "bunch", "ya", "yall", "pls", "thx"];
+
+fn strip_casual(s: &str) -> String {
+    s.split_whitespace()
+        .filter(|w| !CASUAL_WORDS.contains(&w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase().as_str()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub fn content_loss(orig: &str, rewrite: &str) -> (usize, usize) {
     let mut stripped = orig.to_lowercase();
     for w in wordy_set() {
@@ -659,7 +672,10 @@ pub fn validate(item: &RawItem, orig: &str, earlier: &[&str], doc_rest: &str) ->
     // A filler sentence "rephrased" into shorter filler is still filler: treat it as a remove.
     let action = if action == "rephrase" && filler_like(orig) && word_count(orig) <= 14 { "remove".to_string() } else { action };
     if action == "rephrase" {
-        let hinted = !hints_for(orig, earlier).is_empty();
+        // The user's writing goal counts as a hint: "formal" exists to rewrite casual or short lines.
+        // The fact guards below still apply in full.
+        let goal_miss = flags.iter().any(|f| f == "misses goal");
+        let hinted = goal_miss || !hints_for(orig, earlier).is_empty();
         if word_count(orig) < MIN_WORDS_UNHINTED && !hinted {
             return Err(Reject::TooShortToRephrase);
         }
@@ -696,9 +712,11 @@ pub fn validate(item: &RawItem, orig: &str, earlier: &[&str], doc_rest: &str) ->
         }
         // A rephrase keeps what the sentence says; a rewrite that loses its
         // content words is a summary, however fluent.
-        // One lost word is always allowed (a synonym), more only in proportion.
-        let (lost, total) = content_loss(orig, &t);
-        let allowed = ((total as f64) * (1.0 - MIN_CONTENT_KEPT)).floor().max(1.0) as usize;
+        // One lost word is always allowed (a synonym), more only in proportion. A goal rewrite
+        // drops slang by design and rewords more freely; names and numbers are still checked below.
+        let (lost, total) = if goal_miss { content_loss(&strip_casual(orig), &t) } else { content_loss(orig, &t) };
+        let kept = if goal_miss { GOAL_CONTENT_KEPT } else { MIN_CONTENT_KEPT };
+        let allowed = ((total as f64) * (1.0 - kept)).floor().max(1.0) as usize;
         if lost > allowed {
             return Err(Reject::ContentLost(format!("{lost} of {total} content words lost")));
         }
@@ -1171,6 +1189,15 @@ mod tests {
         assert_eq!(validate(&item("rephrase", "42 days ago, let me take you back.", 5, &["tangled"]), casual, &[], "x").unwrap_err(), Reject::CasualVoice);
         let casual_wordy = "ngl in order to be able to ship this week i need the designs by monday.";
         assert!(validate(&item("rephrase", "ngl to ship this week i need the designs by monday.", 5, &["wordy phrase"]), casual_wordy, &[], "x").unwrap().is_some());
+    }
+
+    #[test]
+    fn a_writing_goal_may_rewrite_casual_voice_but_not_drop_facts() {
+        let casual = "Hey guys, we gotta get the report done by Friday because it's kinda late already.";
+        assert_eq!(validate(&item("rephrase", "We need to finish the report by Friday, as it is already late.", 5, &[]), casual, &[], "x").unwrap_err(), Reject::CasualVoice);
+        let v = validate(&item("rephrase", "We need to finish the report by Friday, as it is already late.", 5, &["misses goal"]), casual, &[], "x").unwrap();
+        assert!(v.is_some(), "a goal miss may rewrite casual voice");
+        assert!(validate(&item("rephrase", "We need to finish the report soon, as it is already late.", 5, &["misses goal"]), casual, &[], "x").is_err(), "names and days still have to survive");
     }
 
     fn mk_alert(kind: &str, u16_start: usize, u16_end: usize, hash: u64) -> Alert {

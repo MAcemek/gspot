@@ -212,26 +212,41 @@ fn finish(mut out: Vec<Alert>, text: &str, map: &TextMap) -> Vec<Alert> {
     kept
 }
 
+/// Lines as `(char_start, char_end, byte_start, byte_end)`, without their break. A break is
+/// "\n", "\r\n" or a lone "\r" (Windows rich edit controls such as Notepad's use "\r").
+fn lines(text: &str) -> Vec<(usize, usize, usize, usize)> {
+    let mut out = Vec::new();
+    let (mut lc, mut lb) = (0usize, 0usize);
+    let mut chars = text.char_indices().enumerate().peekable();
+    while let Some((ci, (bi, ch))) = chars.next() {
+        if ch == '\n' || ch == '\r' {
+            out.push((lc, ci, lb, bi));
+            let crlf = ch == '\r' && chars.peek().map(|&(_, (_, c))| c == '\n').unwrap_or(false);
+            if crlf {
+                chars.next();
+            }
+            let skip = if crlf { 2 } else { 1 };
+            (lc, lb) = (ci + skip, bi + skip);
+        }
+    }
+    out.push((lc, text.chars().count(), lb, text.len()));
+    out
+}
+
 /// Paragraphs (runs of non-blank lines) as `(char_start, char_end, byte_start, byte_end)`.
 fn paragraphs(text: &str) -> Vec<(usize, usize, usize, usize)> {
     let mut out = Vec::new();
-    let (mut bpos, mut cpos) = (0usize, 0usize);
     let mut open: Option<(usize, usize)> = None;
     let mut end = (0usize, 0usize);
-    for line in text.split_inclusive('\n') {
-        let body = line.trim_end_matches(['\n', '\r']);
-        if body.trim().is_empty() {
+    for (c0, c1, b0, b1) in lines(text) {
+        if text[b0..b1].trim().is_empty() {
             if let Some((cs, bs)) = open.take() {
                 out.push((cs, end.0, bs, end.1));
             }
         } else {
-            if open.is_none() {
-                open = Some((cpos, bpos));
-            }
-            end = (cpos + body.chars().count(), bpos + body.len());
+            open.get_or_insert((c0, b0));
+            end = (c1, b1);
         }
-        bpos += line.len();
-        cpos += line.chars().count();
     }
     if let Some((cs, bs)) = open {
         out.push((cs, end.0, bs, end.1));
@@ -564,6 +579,25 @@ mod tests {
         let t = "This is an test of teh engine.\n\nSecond paragraph.";
         assert_eq!(key(&e.check_incremental(t)), key(&Engine::new().check(t)));
         assert_eq!(e.paragraphs_linted, 0);
+    }
+
+    #[test]
+    fn notepad_line_breaks_split_paragraphs() {
+        // Notepad's rich edit control reports "\r" line breaks; Word-style text uses "\r\n".
+        let p = "The quarterly review covered revenue and hiring, and most teams hit their targets this year.";
+        let body: String = (0..60).map(|i| format!("{p} Section {i}.")).collect::<Vec<_>>().join("\r\r");
+        assert!(body.len() > 4000);
+        assert_eq!(paragraphs(&body).len(), 60);
+        assert_eq!(paragraphs(&body.replace("\r\r", "\r\n\r\n")).len(), 60);
+        assert_eq!(paragraphs(&body.replace("\r\r", "\n\n")).len(), 60);
+        let mut e = Engine::new();
+        e.check_incremental(&body);
+        let first = e.paragraphs_linted;
+        let edited = body.replacen("Section 7.", "Section 7 teh.", 1);
+        let alerts = e.check_incremental(&edited);
+        assert_eq!(e.paragraphs_linted - first, 1, "only the edited paragraph is re-checked");
+        let teh = alerts.iter().find(|a| a.original == "teh").expect("the new typo is flagged");
+        assert_eq!(&edited.chars().skip(teh.start).take(3).collect::<String>(), "teh");
     }
 
     #[test]

@@ -53,9 +53,14 @@ pub fn accept_alert_inner(app: &AppHandle, shared: &Shared, id: &str, suggestion
 /// alerts before sentence rewrites); a toast says so when nothing is there.
 pub fn accept_at_cursor(app: &AppHandle) {
     let shared = app.state::<Shared>().inner().clone();
+    // Long documents are re-read less often, so ask the field for the caret now.
+    let (el, cached) = {
+        let st = shared.lock().unwrap();
+        (st.element.clone(), st.doc.as_ref().map(|d| d.sel_start))
+    };
+    let caret = el.and_then(|e| e.range("AXSelectedTextRange")).map(|(start, _)| start).or(cached);
     let id = {
         let st = shared.lock().unwrap();
-        let caret = st.doc.as_ref().map(|d| d.sel_start);
         caret.and_then(|c| {
             let hit = |a: &&Alert| !a.suggestions.is_empty() && a.u16_start <= c && c <= a.u16_end;
             let word = st.alerts.iter().filter(hit).find(|a| !a.kind.starts_with("Spot"));

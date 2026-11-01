@@ -101,11 +101,12 @@ pub fn paragraphs(text: &str) -> Vec<ParagraphScore> {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
     let line_blank = |a: usize, b: usize| chars[a..b].iter().all(|c| c.is_whitespace());
-    // (start, end) of every line, without its newline
+    // (start, end) of every line, without its break: "\n", or a lone "\r" (Notepad's rich edit
+    // control); the "\r" of a "\r\n" stays in the line as trailing whitespace.
     let mut lines: Vec<(usize, usize)> = Vec::new();
     let mut ls = 0;
     for i in 0..=n {
-        if i == n || chars[i] == '\n' {
+        if i == n || chars[i] == '\n' || (chars[i] == '\r' && chars.get(i + 1) != Some(&'\n')) {
             lines.push((ls, i));
             ls = i + 1;
         }
@@ -249,6 +250,17 @@ pub fn compute(text: &str, alerts: &[Alert]) -> Score {
 mod tests {
     use super::*;
     use crate::engine::Category;
+
+    #[test]
+    fn notepad_line_breaks_give_one_score_per_paragraph() {
+        let p = "The quarterly review covered revenue and hiring, and most teams hit their targets this year.";
+        for sep in ["\r\r", "\r\n\r\n", "\n\n"] {
+            let text = [p, p, p].join(sep);
+            let ps = paragraphs(&text);
+            assert_eq!(ps.len(), 3, "separator {sep:?}");
+            assert!(ps[1].preview.starts_with("The quarterly review"), "{:?}", ps[1].preview);
+        }
+    }
 
     fn alert(cat: Category) -> Alert {
         Alert {
