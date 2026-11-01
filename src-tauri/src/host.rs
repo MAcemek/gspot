@@ -40,15 +40,35 @@ pub const BUILT_IN_SKIP: &[&str] = &[
     "alacritty.exe",
     "warp.exe",
     "mintty.exe",
+    // Windows code editors and IDEs (turn back on per app in Settings).
+    "code.exe",
+    "code - insiders.exe",
+    "cursor.exe",
+    "windsurf.exe",
+    "zed.exe",
+    "devenv.exe",
+    "sublime_text.exe",
+    "idea64.exe",
+    "pycharm64.exe",
+    "webstorm64.exe",
+    "rider64.exe",
+    "clion64.exe",
+    "goland64.exe",
+    "phpstorm64.exe",
+    "rustrover64.exe",
+    "studio64.exe",
 ];
 
 pub fn built_in_skip(bundle_id: &str) -> bool {
     BUILT_IN_SKIP.contains(&bundle_id)
 }
 
-/// Stay out of this app: a terminal, or one the user added to the skip list.
+/// Stay out of this app: a terminal or code editor (unless the user turned it
+/// back on), or one the user added to the skip list.
 pub fn skipped_app(bundle_id: &str, settings: &crate::settings::Settings) -> bool {
-    !bundle_id.is_empty() && (built_in_skip(bundle_id) || settings.skip_apps.iter().any(|a| a.bundle_id == bundle_id))
+    !bundle_id.is_empty()
+        && ((built_in_skip(bundle_id) && !settings.unskip_apps.iter().any(|a| a == bundle_id))
+            || settings.skip_apps.iter().any(|a| a.bundle_id == bundle_id))
 }
 const POLL: Duration = Duration::from_millis(100);
 const LINT_DEBOUNCE: Duration = Duration::from_millis(150);
@@ -85,7 +105,7 @@ pub struct Status {
     pub frontmost_bid: String,
     /// The app in front is one GSpot stays out of.
     pub skipped: bool,
-    /// ... because it is a terminal (built in), not a user choice.
+    /// ... because it is a terminal or code editor (built in), not a user choice.
     pub skip_built_in: bool,
     pub has_doc: bool,
     pub linting: bool,
@@ -439,6 +459,8 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
                 };
                 lint_ms = t_lint.elapsed().as_millis();
                 st.all_alerts = all;
+                let words = st.settings.user_words.clone();
+                st.all_alerts.retain(|a| !(matches!(a.kind.as_str(), "Spelling" | "Typo") && crate::settings::is_user_word(&words, &a.original)));
                 st.alerts = st.visible_alerts();
                 st.lint_dirty = false;
                 st.status.linting = false;
@@ -695,6 +717,22 @@ mod tests {
         s.skip_apps.push(crate::settings::SkipApp { bundle_id: "com.apple.Notes".into(), name: "Notes".into() });
         assert!(skipped_app("com.apple.Notes", &s));
         assert!(!built_in_skip("com.apple.Notes"), "a user choice is not built in");
+    }
+
+    #[test]
+    fn code_editors_are_skipped_until_turned_back_on() {
+        let mut s = crate::settings::Settings::default();
+        assert!(skipped_app("code.exe", &s));
+        assert!(skipped_app("cursor.exe", &s));
+        assert!(skipped_app("windowsterminal.exe", &s));
+        s.unskip_apps.push("code.exe".into());
+        assert!(!skipped_app("code.exe", &s), "turned back on");
+        assert!(built_in_skip("code.exe"), "still built in");
+        assert!(skipped_app("cursor.exe", &s), "others unaffected");
+        s.unskip_apps.push("windowsterminal.exe".into());
+        assert!(!skipped_app("windowsterminal.exe", &s), "terminals too");
+        s.skip_apps.push(crate::settings::SkipApp { bundle_id: "code.exe".into(), name: "Code".into() });
+        assert!(skipped_app("code.exe", &s), "a user skip wins");
     }
 
     #[test]

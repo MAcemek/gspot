@@ -219,10 +219,11 @@ export function NoDoc({ ctx }: { ctx: Ctx }) {
   const st = ctx.status;
   if (st.skipped && st.frontmost) {
     const resume = () => ctx.updateSettings({ skip_apps: ctx.settings.skip_apps.filter((a) => a.bundle_id !== st.frontmost_bid) }).catch((e) => ctx.toast(String(e)));
+    const unskip = () => ctx.updateSettings({ unskip_apps: [...ctx.settings.unskip_apps, st.frontmost_bid] }).catch((e) => ctx.toast(String(e)));
     return (
       <Empty icon={<I.Pencil />} title={`GSpot is off in ${st.frontmost}`}>
         {st.skip_built_in
-          ? "A terminal shows a command transcript, not writing. GSpot stays out of terminals."
+          ? <>Terminals and code editors show commands and code, not writing, so GSpot stays out of them. <button className="linkbtn" onClick={unskip}>Turn it on in {st.frontmost}</button></>
           : <>You switched GSpot off in this app. <button className="linkbtn" onClick={resume}>Turn it on in {st.frontmost}</button></>}
       </Empty>
     );

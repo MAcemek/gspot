@@ -16,6 +16,7 @@ pub mod overlay;
 pub mod publik;
 pub mod score;
 pub mod settings;
+pub mod shortcut;
 pub mod spellrank;
 pub mod textmap;
 pub mod updates;
@@ -44,12 +45,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(shortcut::plugin())
         .manage(shared.clone())
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let handle = app.handle().clone();
             overlay::create_windows(&handle, &dock_side)?;
+            shortcut::register(&handle);
             // Start tucked behind the edge tab, like Grammarly. First run (no
             // Accessibility yet) starts open so the permission gate is visible.
             overlay::set_tucked(&handle, &dock_side, ax::is_trusted(), false, false);
@@ -99,6 +102,8 @@ pub fn run() {
             commands::chat_send,
             commands::get_settings,
             commands::set_settings,
+            commands::add_user_word,
+            commands::remove_user_word,
             commands::get_history,
             commands::open_panel,
             commands::hide_panel,

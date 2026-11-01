@@ -466,6 +466,50 @@ pub fn set_settings(app: AppHandle, state: State<'_, Shared>, settings: Settings
     Ok(())
 }
 
+/// Add or remove a dictionary word, then drop matching spelling alerts at once.
+fn edit_user_word(app: &AppHandle, shared: &Shared, word: &str, add: bool) -> Vec<String> {
+    // Store the base word: adding "Sam's" should also stop "Sam" being flagged.
+    let w = word.trim();
+    let w = w.strip_suffix("'s").or_else(|| w.strip_suffix("’s")).unwrap_or(w).to_string();
+    if w.is_empty() || w.chars().count() > 60 {
+        return shared.lock().unwrap().settings.user_words.clone();
+    }
+    let lw = w.to_lowercase();
+    let s = save_settings(app, shared, |s| {
+        if add {
+            if !s.user_words.iter().any(|u| u.to_lowercase() == lw) {
+                s.user_words.push(w.clone());
+            }
+        } else {
+            s.user_words.retain(|u| u.to_lowercase() != lw);
+        }
+    });
+    if add {
+        let mut st = shared.lock().unwrap();
+        let words = s.user_words.clone();
+        st.all_alerts.retain(|a| !(matches!(a.kind.as_str(), "Spelling" | "Typo") && settings::is_user_word(&words, &a.original)));
+        st.alerts = st.visible_alerts();
+        let alerts = st.alerts.clone();
+        drop(st);
+        let _ = app.emit("host://alerts", &alerts);
+    } else {
+        // Removed: the next lint flags the word again.
+        let mut st = shared.lock().unwrap();
+        st.last_text_hash = 0;
+    }
+    s.user_words
+}
+
+#[tauri::command]
+pub fn add_user_word(app: AppHandle, state: State<'_, Shared>, word: String) -> Vec<String> {
+    edit_user_word(&app, state.inner(), &word, true)
+}
+
+#[tauri::command]
+pub fn remove_user_word(app: AppHandle, state: State<'_, Shared>, word: String) -> Vec<String> {
+    edit_user_word(&app, state.inner(), &word, false)
+}
+
 #[tauri::command]
 pub fn get_history(state: State<'_, Shared>) -> Vec<crate::history::Session> {
     state.lock().unwrap().history.clone()

@@ -18,6 +18,8 @@ export const ipc = {
   chatSend: (reqId: string, messages: { role: string; content: string }[]) => invoke<string>("chat_send", { reqId, messages }),
   getSettings: () => invoke<Settings>("get_settings"),
   setSettings: (settings: Settings) => invoke<void>("set_settings", { settings }),
+  addUserWord: (word: string) => invoke<string[]>("add_user_word", { word }),
+  removeUserWord: (word: string) => invoke<string[]>("remove_user_word", { word }),
   getHistory: () => invoke<Session[]>("get_history"),
   openPanel: (view?: string, focus = false) => invoke<void>("open_panel", { view, focus }),
   hidePanel: () => invoke<void>("hide_panel"),

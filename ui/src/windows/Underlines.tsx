@@ -105,6 +105,9 @@ export function Underlines() {
               </button>
             )}
             <button className="btn btn--ghost" onClick={() => { ipc.dismissAlert(alert.id).catch(() => {}); setOpen(null); }}>Dismiss</button>
+            {(alert.kind === "Spelling" || alert.kind === "Typo") && (
+              <button className="btn btn--ghost" onClick={() => { ipc.addUserWord(alert.original.trim()).catch(() => {}); setOpen(null); }}>Add to dictionary</button>
+            )}
           </div>
           {alert.suggestions.length > 1 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>

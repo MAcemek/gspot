@@ -108,6 +108,10 @@ pub struct Settings {
     pub ai_fallback_local: bool,
     /// Launch GSpot when the user logs in.
     pub start_with_windows: bool,
+    /// Words the user added: never flagged as misspelled (compared case-insensitively).
+    pub user_words: Vec<String>,
+    /// Built-in skipped apps the user turned GSpot back on in.
+    pub unskip_apps: Vec<String>, // bundle ids / exe names
 }
 
 impl Default for Settings {
@@ -131,6 +135,8 @@ impl Default for Settings {
             skip_apps: vec![],
             ai_fallback_local: true,
             start_with_windows: true,
+            user_words: vec![],
+            unskip_apps: vec![],
         }
     }
 }
@@ -171,6 +177,14 @@ pub fn initials(name: &str) -> String {
     } else {
         s
     }
+}
+
+/// Is `original` (a flagged word) one the user added? Trims, drops a trailing
+/// possessive "'s" / "’s", compares case-insensitively.
+pub fn is_user_word(words: &[String], original: &str) -> bool {
+    let w = original.trim();
+    let w = w.strip_suffix("'s").or_else(|| w.strip_suffix("’s")).unwrap_or(w).to_lowercase();
+    !w.is_empty() && words.iter().any(|u| u.trim().to_lowercase() == w)
 }
 
 pub fn support_dir() -> PathBuf {
@@ -299,5 +313,23 @@ mod tests {
         assert!(back.dismissed.contains(&42));
         assert_eq!(back.llm.model, "x");
         assert_eq!(back.dock_side, "left");
+    }
+
+    #[test]
+    fn old_files_have_no_user_words_or_unskipped_apps() {
+        let back: Settings = serde_json::from_str(r#"{"onboarded":true}"#).unwrap();
+        assert!(back.user_words.is_empty());
+        assert!(back.unskip_apps.is_empty());
+    }
+
+    #[test]
+    fn user_words_match_case_insensitively_and_ignore_possessives() {
+        let words = vec!["Sam".to_string()];
+        assert!(is_user_word(&words, "Sam"));
+        assert!(is_user_word(&words, "sam's"));
+        assert!(is_user_word(&words, "SAM"));
+        assert!(is_user_word(&words, " Sam’s "));
+        assert!(!is_user_word(&words, "Samuel"));
+        assert!(!is_user_word(&[], "Sam"));
     }
 }

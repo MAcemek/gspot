@@ -84,6 +84,11 @@ export function Review({ ctx }: { ctx: Ctx }) {
     finally { setSuggesting(null); }
   };
   const dismiss = async (a: Alert) => { try { await ipc.dismissAlert(a.id); } catch (e) { ctx.toast(String(e)); } };
+  const addWord = async (a: Alert) => {
+    const w = a.original.trim();
+    try { await ipc.addUserWord(w); ctx.refresh(); ctx.toast(`“${w}” added to your dictionary`); }
+    catch (e) { ctx.toast(String(e)); }
+  };
   const skipApp = async () => {
     const d = ctx.doc!;
     if (!d.bundle_id || ctx.settings.skip_apps.some((a) => a.bundle_id === d.bundle_id)) return;
@@ -157,6 +162,7 @@ export function Review({ ctx }: { ctx: Ctx }) {
                     </button>
                   )}
                   <button className="btn btn--ghost" onClick={() => dismiss(a)}>Dismiss</button>
+                  {(a.kind === "Spelling" || a.kind === "Typo") && <button className="btn btn--ghost" onClick={() => addWord(a)}>Add to dictionary</button>}
                   {a.suggestions.length > 1 && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {a.suggestions.slice(1, 4).map((s, i) => <button key={i} className="btn btn--outline" style={{ padding: "6px 12px" }} onClick={() => accept(a, i + 1)}>{s || "Remove"}</button>)}

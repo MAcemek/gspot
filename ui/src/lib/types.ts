@@ -37,6 +37,7 @@ export interface Settings {
   search: { brave_key: string }; custom_voices: Voice[]; custom_audiences: Audience[];
   dismissed: number[]; target_language: string; citation_style: string; show_gbutton: boolean; show_underlines: boolean; onboarded: boolean;
   auto_spot_check: boolean; ai_fallback_local: boolean; start_with_windows: boolean; publik: PublikSettings; skip_apps: SkipApp[];
+  user_words: string[]; unskip_apps: string[];
 }
 
 export interface PublikNotice { kind: string; message: string; link_label: string; link_url: string }
