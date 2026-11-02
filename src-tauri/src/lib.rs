@@ -22,6 +22,8 @@ pub mod spellrank;
 pub mod textmap;
 pub mod updates;
 pub mod wordopts;
+#[cfg(windows)]
+pub mod word_com;
 
 use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem};

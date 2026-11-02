@@ -27,6 +27,7 @@ pub enum Method {
     Ax,
     Paste,
     Type,
+    Word,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -118,24 +119,64 @@ fn verified(el: &AXElement, loc: usize, replacement: &str) -> Option<String> {
     }
 }
 
-/// Windows: select the range, then type the fix as Unicode keystrokes (no clipboard, no whole-field reads).
+/// Where the target sits: `doc_loc` in the text GSpot read (`AXValue`), `ui_loc` in
+/// the field's UI Automation range coordinates (they differ in Word once bullets,
+/// tables or fields are involved).
 #[cfg(windows)]
-pub fn replace_range(el: &AXElement, _pid: i32, loc: usize, len: usize, replacement: &str, before: &str) -> Result<ApplyResult> {
-    // Guard on the range only: it must still hold what we think it does.
+struct Resolved {
+    doc_loc: usize,
+    ui_loc: usize,
+    base: String,
+}
+
+/// Make sure the range still holds the original text; if not, look for it nearby
+/// in the live text (and, if UIA's offsets are skewed, nearby in UIA coordinates).
+#[cfg(windows)]
+fn resolve_target(el: &AXElement, loc: usize, len: usize, before: &str) -> Result<Resolved> {
+    use crate::word_com::{norm_eq, relocate};
+    let changed = || anyhow!("The text changed since this suggestion was made. Try again.");
     let want = slice_utf16(before, loc, loc + len);
-    match el.text_range(loc, len) {
-        Some(got) => {
-            if got != want {
-                return Err(anyhow!("The text changed since this suggestion was made. Try again."));
-            }
-        }
-        None => {
-            let live = el.string("AXValue").ok_or_else(|| anyhow!("The text field is no longer available."))?;
-            if live != before && slice_utf16(&live, loc, loc + len) != want {
-                return Err(anyhow!("The text changed since this suggestion was made. Try again."));
+    let range_ok = |l: usize| -> Option<bool> { el.text_range(l, len).map(|got| norm_eq(&got, &want)) };
+    if range_ok(loc) == Some(true) {
+        return Ok(Resolved { doc_loc: loc, ui_loc: loc, base: before.to_string() });
+    }
+    let live = el.string("AXValue").ok_or_else(|| anyhow!("The text field is no longer available."))?;
+    // Where the original text is in the live document text.
+    let doc_loc = if norm_eq(&slice_utf16(&live, loc, loc + len), &want) { loc } else { relocate(&live, &want, loc, 200).ok_or_else(changed)? };
+    match range_ok(doc_loc) {
+        Some(true) => return Ok(Resolved { doc_loc, ui_loc: doc_loc, base: live }),
+        None => return Ok(Resolved { doc_loc, ui_loc: doc_loc, base: live }), // no range support: trust the text
+        Some(false) => {}
+    }
+    // UIA's offsets disagree with the text (list bullets, tables...): find the range that holds it.
+    for d in 1..=64usize {
+        for cand in [Some(doc_loc + d), doc_loc.checked_sub(d)].into_iter().flatten() {
+            if range_ok(cand) == Some(true) {
+                return Ok(Resolved { doc_loc, ui_loc: cand, base: live });
             }
         }
     }
+    Err(changed())
+}
+
+/// Windows: Word through its COM object model first; otherwise select the range
+/// and type the fix as Unicode keystrokes (no clipboard, no whole-field reads).
+#[cfg(windows)]
+pub fn replace_range(el: &AXElement, _pid: i32, loc: usize, len: usize, replacement: &str, before: &str) -> Result<ApplyResult> {
+    use crate::word_com::{norm_eq, try_replace, Outcome};
+    let exe = crate::ax::exe_name(el.pid()).unwrap_or_default();
+    // Word: edit the document itself. It does not need to be in front.
+    if exe == "winword.exe" {
+        let in_front = crate::ax::frontmost_app().map(|(pid, _, _)| pid) == Some(el.pid());
+        match try_replace(el.top_level_hwnd(), in_front, loc, len, replacement, before) {
+            Outcome::Done { new_text } => return Ok(ApplyResult { method: Method::Word, new_text }),
+            Outcome::Failed(msg) => return Err(anyhow!(msg)),
+            Outcome::NotHandled(why) => log::debug!("word com not used: {why}"),
+        }
+    }
+    let r = resolve_target(el, loc, len, before)?;
+    let (loc, before) = (r.ui_loc, r.base.as_str());
+    let doc_loc = r.doc_loc;
     // Keystrokes go to the foreground window, so the field's app must be in front, not our panel.
     let in_front = crate::ax::frontmost_app().map(|(pid, _, _)| pid) == Some(el.pid());
     if !el.has_focus() || !in_front {
@@ -148,25 +189,27 @@ pub fn replace_range(el: &AXElement, _pid: i32, loc: usize, len: usize, replacem
     if el.set_range("AXSelectedTextRange", loc, len).is_err() {
         // Fallback: a plain field with a writable Value takes the whole new text.
         let live = el.string("AXValue").ok_or_else(|| anyhow!("The text field is no longer available."))?;
-        let expected = splice_utf16(&live, loc, len, replacement);
+        let expected = splice_utf16(&live, doc_loc, len, replacement);
         if el.is_settable("AXValue") && el.set_string("AXValue", &expected).is_ok() {
             sleep(Duration::from_millis(70));
-            if let Some(new_text) = verified(el, loc, replacement) {
+            if let Some(new_text) = verified(el, doc_loc, replacement) {
                 return Ok(ApplyResult { method: Method::Ax, new_text });
             }
         }
         return Err(anyhow!("This app did not accept the replacement. Try editing it directly."));
     }
     send_inputs(&type_inputs(replacement));
-    let new_text = splice_utf16(before, loc, len, replacement);
+    let new_text = splice_utf16(before, doc_loc, len, replacement);
     if replacement.is_empty() {
         return Ok(ApplyResult { method: Method::Type, new_text });
     }
+    // Word, Outlook and friends autocorrect (smart quotes, dashes) and read input late.
+    let wait = if matches!(exe.as_str(), "winword.exe" | "outlook.exe") { 800 } else { 400 };
     let n = replacement.encode_utf16().count();
     let start = std::time::Instant::now();
-    while start.elapsed() < Duration::from_millis(400) {
+    while start.elapsed() < Duration::from_millis(wait) {
         sleep(Duration::from_millis(30));
-        if el.text_range(loc, n).as_deref() == Some(replacement) {
+        if el.text_range(loc, n).map_or(false, |got| norm_eq(&got, replacement)) {
             return Ok(ApplyResult { method: Method::Type, new_text });
         }
     }

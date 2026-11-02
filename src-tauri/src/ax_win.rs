@@ -335,6 +335,26 @@ impl AXElement {
         }
     }
 
+    /// Handle of the top-level window holding this element: its own (or the nearest
+    /// ancestor's) native window handle, taken to the root window.
+    pub fn top_level_hwnd(&self) -> Option<isize> {
+        let u = uia()?;
+        let mut cur = self.el()?.clone();
+        unsafe {
+            let walker = u.ControlViewWalker().ok()?;
+            for _ in 0..40 {
+                if let Ok(h) = cur.CurrentNativeWindowHandle() {
+                    if !h.is_invalid() {
+                        let root = GetAncestor(h, GA_ROOT);
+                        return Some(if root.is_invalid() { h.0 as isize } else { root.0 as isize });
+                    }
+                }
+                cur = walker.GetParentElement(&cur).ok()?;
+            }
+        }
+        None
+    }
+
     pub fn is_settable(&self, name: &str) -> bool {
         match name {
             "AXValue" => self.value_read_only() == Some(false),
@@ -456,6 +476,12 @@ fn process_image(pid: u32) -> Option<String> {
         let _ = CloseHandle(h);
         ok.then(|| String::from_utf16_lossy(&buf[..size as usize]))
     }
+}
+
+/// Lower-case executable file name (`winword.exe`) of a process.
+pub fn exe_name(pid: i32) -> Option<String> {
+    let path = process_image(pid as u32)?;
+    Some(path.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase())
 }
 
 /// Foreground application as `(pid, app id, display name)`. The app id is the
