@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Panel, G-button and underline overlay windows.",
-  "windows": ["panel", "gbutton", "underlines", "tab"],
+  "windows": ["panel", "gbutton", "underlines", "tab", "card"],
   "permissions": [
     "core:default",
     "core:event:default",

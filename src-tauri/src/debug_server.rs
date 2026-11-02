@@ -52,7 +52,7 @@ fn handle(app: &AppHandle, shared: &Shared, path: &str, args: Value) -> Result<V
                 "alerts": st.alerts,
                 "status": st.status,
                 "geometry": st.geometry,
-                "card_rects": st.card_rects,
+                "card_rects": if st.card_open.is_some() { vec![st.card_rect] } else { vec![] },
                 "score": st.doc.as_ref().map(|d| crate::score::compute(&d.text, &st.alerts)),
                 "ui_ready": st.ui_ready,
                 "ui_log": st.ui_log,

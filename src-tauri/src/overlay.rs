@@ -1,6 +1,7 @@
 //! Window creation and placement: the panel (docked left by default), the
 //! floating G button, and the click-through underline layer.
 
+use crate::ax::Rect;
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -9,6 +10,9 @@ use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUr
 
 pub const PANEL_W: f64 = 440.0;
 pub const PANEL_H: f64 = 740.0;
+/// Hover card window: initial size, until the card reports its own.
+pub const CARD_W: f64 = 340.0;
+pub const CARD_H: f64 = 220.0;
 const MARGIN: f64 = 12.0;
 /// Edge tab window: the tab shape is 40 pt wide and nudges out on hover, so the
 /// window leaves 8 pt of transparent room for that.
@@ -225,6 +229,94 @@ pub fn create_windows(app: &AppHandle, side: &str) -> tauri::Result<()> {
         .visible_on_all_workspaces(true)
         .visible(false)
         .build()?;
+    // Permanently click-through: the hover card lives in its own window.
     let _ = u.set_ignore_cursor_events(true);
+
+    let c = WebviewWindowBuilder::new(app, "card", WebviewUrl::App("index.html".into()))
+        .title("")
+        .inner_size(CARD_W, CARD_H)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .focused(false)
+        .focusable(false)
+        .accept_first_mouse(true)
+        .visible_on_all_workspaces(true)
+        .visible(false)
+        .build()?;
+    let _ = c;
     Ok(())
+}
+
+/// The screen (logical coords) containing the point, else the primary one.
+pub fn screen_at(app: &AppHandle, px: f64, py: f64) -> Rect {
+    if let Ok(ms) = app.available_monitors() {
+        for m in ms {
+            let s = m.scale_factor();
+            let (p, z) = (m.position(), m.size());
+            let r = Rect { x: p.x as f64 / s, y: p.y as f64 / s, w: z.width as f64 / s, h: z.height as f64 / s };
+            if r.contains(px, py) {
+                return r;
+            }
+        }
+    }
+    let (x, y, w, h) = primary_logical(app);
+    Rect { x, y, w, h }
+}
+
+/// Top-left of the hover card for a word at `anchor`: below it, or above when
+/// there is no room, always kept on `screen` (all logical screen coordinates).
+pub fn place_card(anchor: Rect, size: (f64, f64), screen: Rect) -> (f64, f64) {
+    let x = anchor.x.min(screen.x + screen.w - size.0 - 4.0).max(screen.x + 4.0);
+    let mut y = anchor.y + anchor.h + 6.0;
+    if y + size.1 > screen.y + screen.h - 4.0 {
+        y = anchor.y - 6.0 - size.1;
+    }
+    let y = y.min(screen.y + screen.h - size.1 - 4.0).max(screen.y + 4.0);
+    (x, y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SCREEN: Rect = Rect { x: 0.0, y: 0.0, w: 1000.0, h: 800.0 };
+    const SIZE: (f64, f64) = (340.0, 220.0);
+
+    fn word(x: f64, y: f64) -> Rect {
+        Rect { x, y, w: 40.0, h: 16.0 }
+    }
+
+    #[test]
+    fn card_goes_below_the_word() {
+        assert_eq!(place_card(word(100.0, 200.0), SIZE, SCREEN), (100.0, 222.0));
+    }
+
+    #[test]
+    fn card_flips_above_near_the_bottom() {
+        assert_eq!(place_card(word(100.0, 700.0), SIZE, SCREEN), (100.0, 700.0 - 6.0 - 220.0));
+    }
+
+    #[test]
+    fn card_is_clamped_at_the_right_edge() {
+        assert_eq!(place_card(word(900.0, 200.0), SIZE, SCREEN).0, 1000.0 - 340.0 - 4.0);
+    }
+
+    #[test]
+    fn card_is_clamped_at_the_left_edge() {
+        let screen = Rect { x: 50.0, ..SCREEN };
+        assert_eq!(place_card(word(10.0, 200.0), SIZE, screen).0, 54.0);
+    }
+
+    #[test]
+    fn a_tall_card_on_a_short_screen_stays_on_screen() {
+        let screen = Rect { x: 0.0, y: 0.0, w: 1000.0, h: 200.0 };
+        let (_, y) = place_card(word(100.0, 100.0), (340.0, 300.0), screen);
+        assert_eq!(y, 4.0);
+        let (_, y) = place_card(word(100.0, 100.0), SIZE, screen);
+        assert_eq!(y, 4.0, "the top edge wins when it cannot fit");
+    }
 }

@@ -1,0 +1,270 @@
+{"cat": "comma_splice", "text": "The printer jammed again this morning, I called IT before nine.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "Maya loves the new office, her commute is twice as long though.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "We tested the app on three devices, only the oldest phone crashed.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "I can't make dinner on Friday, my flight lands at eight.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "The report is due tomorrow, Priya has not sent her numbers yet.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "Our campaign doubled sign-ups, the budget stayed flat.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "He apologized twice, she still would not answer his calls.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "The soup was lukewarm, the bread tasted stale.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "The professor extended the deadline, several students still submitted late work.", "err": ", ", "fix": "; "}
+{"cat": "comma_splice", "text": "Thanks for the update, I will review the draft tonight and reply by noon.", "err": ", ", "fix": "; "}
+{"cat": "missing_comma_intro", "text": "After the meeting ended Dana stayed to answer questions.", "err": "ended", "fix": "ended,"}
+{"cat": "missing_comma_intro", "text": "However the budget was approved last week.", "err": "However", "fix": "However,"}
+{"cat": "missing_comma_intro", "text": "In my opinion the sequel is better than the original.", "err": "opinion", "fix": "opinion,"}
+{"cat": "missing_comma_intro", "text": "When the package finally arrived the box was crushed.", "err": "arrived", "fix": "arrived,"}
+{"cat": "missing_comma_intro", "text": "Before submitting the form please check your email address.", "err": "form", "fix": "form,"}
+{"cat": "missing_comma_intro", "text": "Unfortunately our flight was cancelled due to the storm.", "err": "Unfortunately", "fix": "Unfortunately,"}
+{"cat": "missing_comma_intro", "text": "If you need anything else let me know.", "err": "else", "fix": "else,"}
+{"cat": "missing_comma_intro", "text": "Although the hotel was cheap the room was spotless.", "err": "cheap", "fix": "cheap,"}
+{"cat": "missing_comma_intro", "text": "Over the past three years our team has grown from four to forty.", "err": "years", "fix": "years,"}
+{"cat": "missing_comma_intro", "text": "As soon as the rain stopped we walked down to the harbor.", "err": "stopped", "fix": "stopped,"}
+{"cat": "missing_comma_compound", "text": "I wanted to join the hike but my knee still hurts.", "err": "but", "fix": ", but"}
+{"cat": "missing_comma_compound", "text": "The lecture was long and the room was freezing.", "err": "long and", "fix": "long, and"}
+{"cat": "missing_comma_compound", "text": "She sent the invoice on Monday so we expected payment by Friday.", "err": "Monday so", "fix": "Monday, so"}
+{"cat": "missing_comma_compound", "text": "Our old laptop is slow but it still runs the basic tools well enough.", "err": "slow but", "fix": "slow, but"}
+{"cat": "missing_comma_compound", "text": "Tom booked the venue and Elena ordered the catering.", "err": "venue and", "fix": "venue, and"}
+{"cat": "missing_comma_compound", "text": "The camera takes great photos but the battery barely lasts a day.", "err": "photos but", "fix": "photos, but"}
+{"cat": "missing_comma_compound", "text": "We can meet at noon or you can call me after the match.", "err": "noon or", "fix": "noon, or"}
+{"cat": "missing_comma_compound", "text": "The movie got great reviews yet I found it painfully dull.", "err": "reviews yet", "fix": "reviews, yet"}
+{"cat": "missing_comma_compound", "text": "I replied to her email twice and she has not answered either message.", "err": "twice and", "fix": "twice, and"}
+{"cat": "missing_comma_compound", "text": "The team shipped the update on time so the client was thrilled.", "err": "time so", "fix": "time, so"}
+{"cat": "comma_before_that", "text": "I think, that the schedule needs another review.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "She said, that the shipment would arrive on Tuesday.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "He realized, that he had left his passport at home.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "I hope, that you can join us for the launch party.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "Make sure, that every student signs the permission slip.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "The manager announced, that the office will close early on Friday.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "It is important, that you save your work before restarting.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "We learned, that the grant had been renewed for two more years.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "My roommate believes, that cold showers improve focus.", "err": ", that", "fix": " that"}
+{"cat": "comma_before_that", "text": "I noticed, that the fridge was making a strange noise again.", "err": ", that", "fix": " that"}
+{"cat": "missing_comma_direct_address", "text": "Marcus can you send me the final file before lunch?", "err": "Marcus", "fix": "Marcus,"}
+{"cat": "missing_comma_direct_address", "text": "I really appreciate your patience Mrs. Okafor.", "err": "patience", "fix": "patience,"}
+{"cat": "missing_comma_direct_address", "text": "Welcome to the workshop everyone.", "err": "workshop", "fix": "workshop,"}
+{"cat": "missing_comma_direct_address", "text": "I'll call you tomorrow Dad.", "err": "tomorrow", "fix": "tomorrow,"}
+{"cat": "missing_comma_direct_address", "text": "Would you mind closing the window Chen?", "err": "window", "fix": "window,"}
+{"cat": "missing_comma_direct_address", "text": "Doctor the results arrived this morning.", "err": "Doctor", "fix": "Doctor,"}
+{"cat": "missing_comma_direct_address", "text": "Good morning class.", "err": "morning", "fix": "morning,"}
+{"cat": "missing_comma_direct_address", "text": "We'll fix it by tonight Alex.", "err": "tonight", "fix": "tonight,"}
+{"cat": "missing_comma_direct_address", "text": "Thank you for your order Ms. Park.", "err": "order", "fix": "order,"}
+{"cat": "missing_comma_direct_address", "text": "Ladies and gentlemen please silence your phones.", "err": "gentlemen", "fix": "gentlemen,"}
+{"cat": "apostrophe_its", "text": "The company announced that it's revenue grew by twelve percent.", "err": "it's", "fix": "its"}
+{"cat": "apostrophe_its", "text": "The cat licked it's paw and went back to sleep.", "err": "it's", "fix": "its"}
+{"cat": "apostrophe_its", "text": "Its been a long week, and I'm ready for the weekend.", "err": "Its", "fix": "It's"}
+{"cat": "apostrophe_its", "text": "I think its going to rain before we reach the trailhead.", "err": "its", "fix": "it's"}
+{"cat": "apostrophe_its", "text": "The software has lost it's ability to sync files automatically.", "err": "it's", "fix": "its"}
+{"cat": "apostrophe_its", "text": "Please let me know if its okay to reschedule.", "err": "its", "fix": "it's"}
+{"cat": "apostrophe_its", "text": "Every city has it's own character, but Lisbon is special.", "err": "it's", "fix": "its"}
+{"cat": "apostrophe_its", "text": "The puppy wagged its tail because its obvious he missed us.", "err": "its obvious", "fix": "it's obvious"}
+{"cat": "apostrophe_its", "text": "The team is proud of it's progress this quarter.", "err": "it's", "fix": "its"}
+{"cat": "apostrophe_its", "text": "Thanks for the invite, but its too late for me to drive tonight.", "err": "its too", "fix": "it's too"}
+{"cat": "apostrophe_plural", "text": "We ordered three pizza's for the study group.", "err": "pizza's", "fix": "pizzas"}
+{"cat": "apostrophe_plural", "text": "All the banana's at the market were overripe.", "err": "banana's", "fix": "bananas"}
+{"cat": "apostrophe_plural", "text": "Several student's forgot to bring their laptops.", "err": "student's", "fix": "students"}
+{"cat": "apostrophe_plural", "text": "Please send me the PDF's before Friday.", "err": "PDF's", "fix": "PDFs"}
+{"cat": "apostrophe_plural", "text": "My neighbor has two dog's that bark all night.", "err": "dog's", "fix": "dogs"}
+{"cat": "apostrophe_plural", "text": "The company hired five engineer's this spring.", "err": "engineer's", "fix": "engineers"}
+{"cat": "apostrophe_plural", "text": "Both of her sister's live in Toronto.", "err": "sister's", "fix": "sisters"}
+{"cat": "apostrophe_plural", "text": "I read the review's and decided to buy the blue one.", "err": "review's", "fix": "reviews"}
+{"cat": "apostrophe_plural", "text": "We need more chair's for the conference room.", "err": "chair's", "fix": "chairs"}
+{"cat": "apostrophe_plural", "text": "There were lots of typo's in the first draft.", "err": "typo's", "fix": "typos"}
+{"cat": "apostrophe_possessive", "text": "Jessica laptop is on the kitchen table.", "err": "Jessica", "fix": "Jessica's"}
+{"cat": "apostrophe_possessive", "text": "The childrens museum offers free admission on Sundays.", "err": "childrens", "fix": "children's"}
+{"cat": "apostrophe_possessive", "text": "I borrowed my brothers car for the weekend.", "err": "brothers", "fix": "brother's"}
+{"cat": "apostrophe_possessive", "text": "Our companys policy allows remote work on Fridays.", "err": "companys", "fix": "company's"}
+{"cat": "apostrophe_possessive", "text": "Please review Carlos proposal before the meeting.", "err": "Carlos", "fix": "Carlos's"}
+{"cat": "apostrophe_possessive", "text": "The dogs bowl was empty when we got home.", "err": "dogs", "fix": "dog's"}
+{"cat": "apostrophe_possessive", "text": "Yesterday I met a friend of my sisters.", "err": "sisters", "fix": "sister's"}
+{"cat": "apostrophe_possessive", "text": "The womens soccer team won the regional final.", "err": "womens", "fix": "women's"}
+{"cat": "apostrophe_possessive", "text": "We reached the end of the books third chapter.", "err": "books", "fix": "book's"}
+{"cat": "apostrophe_possessive", "text": "After a weeks delay, the shipment finally arrived.", "err": "weeks", "fix": "week's"}
+{"cat": "hyphen_vs_dash", "text": "The meeting went well - everyone agreed on the new timeline.", "err": " - ", "fix": "—"}
+{"cat": "hyphen_vs_dash", "text": "I finally finished the novel - and I hated the ending.", "err": " - ", "fix": "—"}
+{"cat": "hyphen_vs_dash", "text": "Pages 14-27 cover the experiment methods.", "err": "14-27", "fix": "14–27"}
+{"cat": "hyphen_vs_dash", "text": "The store is open Monday-Friday from nine to five.", "err": "Monday-Friday", "fix": "Monday–Friday"}
+{"cat": "hyphen_vs_dash", "text": "She kept working -- even after everyone else had left.", "err": " -- ", "fix": "—"}
+{"cat": "hyphen_vs_dash", "text": "The 2019-2021 budget cuts affected every department.", "err": "2019-2021", "fix": "2019–2021"}
+{"cat": "hyphen_vs_dash", "text": "Call me after the game - I want to hear everything.", "err": " - ", "fix": "—"}
+{"cat": "hyphen_vs_dash", "text": "We only need one thing from you--a signature on page two.", "err": "--", "fix": "—"}
+{"cat": "hyphen_vs_dash", "text": "Read chapters 3-5 before our next class.", "err": "3-5", "fix": "3–5"}
+{"cat": "hyphen_vs_dash", "text": "The package should arrive soon - at least that's what the tracker says.", "err": " - ", "fix": "—"}
+{"cat": "compound_adjective_hyphen", "text": "She applied for a full time position at the hospital.", "err": "full time", "fix": "full-time"}
+{"cat": "compound_adjective_hyphen", "text": "It was a well known fact among the staff.", "err": "well known", "fix": "well-known"}
+{"cat": "compound_adjective_hyphen", "text": "We hired a part time designer for the summer.", "err": "part time", "fix": "part-time"}
+{"cat": "compound_adjective_hyphen", "text": "He gave a thought provoking talk on urban planning.", "err": "thought provoking", "fix": "thought-provoking"}
+{"cat": "compound_adjective_hyphen", "text": "This is a user friendly tool for small teams.", "err": "user friendly", "fix": "user-friendly"}
+{"cat": "compound_adjective_hyphen", "text": "The company offers a high quality service at low prices.", "err": "high quality", "fix": "high-quality"}
+{"cat": "compound_adjective_hyphen", "text": "I need a long term solution, not a quick patch.", "err": "long term", "fix": "long-term"}
+{"cat": "compound_adjective_hyphen", "text": "She is a self taught programmer who built the whole site alone.", "err": "self taught", "fix": "self-taught"}
+{"cat": "compound_adjective_hyphen", "text": "We stayed in a family owned hotel near the beach.", "err": "family owned", "fix": "family-owned"}
+{"cat": "compound_adjective_hyphen", "text": "Our client wants an easy to read summary of the findings.", "err": "easy to read", "fix": "easy-to-read"}
+{"cat": "double_space", "text": "Thanks for sending the files  yesterday.", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "I looked at the schedule  and everything seems fine to me.", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "The new intern starts on Monday.  She will shadow Priya for the first week.", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "Could you  forward the notes to the rest of the team?", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "We booked a table for six at the  Italian place downtown.", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "My flight was late, so I missed the  first session of the conference.", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "Please sign the form  and return it to the front desk by Friday afternoon.", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "I enjoyed the book.  The ending was a surprise, though.", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "Our team won the  match on Saturday.", "err": "  ", "fix": " "}
+{"cat": "double_space", "text": "Let's grab coffee after class  if you're free.", "err": "  ", "fix": " "}
+{"cat": "space_before_punct", "text": "I loved the first chapter , but the ending felt rushed.", "err": " ,", "fix": ","}
+{"cat": "space_before_punct", "text": "Are you coming to the party tonight ?", "err": " ?", "fix": "?"}
+{"cat": "space_before_punct", "text": "The deadline is Friday .", "err": " .", "fix": "."}
+{"cat": "space_before_punct", "text": "We need eggs , milk, and flour.", "err": " ,", "fix": ","}
+{"cat": "space_before_punct", "text": "Wow , that was the best concert I have ever seen.", "err": " ,", "fix": ","}
+{"cat": "space_before_punct", "text": "Please bring your ID ; it is required at the door.", "err": " ;", "fix": ";"}
+{"cat": "space_before_punct", "text": "She asked me one thing : why did I leave?", "err": " :", "fix": ":"}
+{"cat": "space_before_punct", "text": "Could you please send me the invoice by Thursday ?", "err": " ?", "fix": "?"}
+{"cat": "space_before_punct", "text": "Thanks again for your help !", "err": " !", "fix": "!"}
+{"cat": "space_before_punct", "text": "Hi Tom , I wanted to follow up on yesterday's call.", "err": " ,", "fix": ","}
+{"cat": "missing_end_punct", "text": "Please find the signed contract attached", "err": "attached", "fix": "attached."}
+{"cat": "missing_end_punct", "text": "I will be out of the office until Monday", "err": "Monday", "fix": "Monday."}
+{"cat": "missing_end_punct", "text": "The new cafe on Main Street has amazing pastries", "err": "pastries", "fix": "pastries."}
+{"cat": "missing_end_punct", "text": "Thanks for the ride. I owe you lunch", "err": "lunch", "fix": "lunch."}
+{"cat": "missing_end_punct", "text": "Our flight leaves at six in the morning, so we should pack tonight", "err": "tonight", "fix": "tonight."}
+{"cat": "missing_end_punct", "text": "This vacuum is loud but it works wonderfully", "err": "wonderfully", "fix": "wonderfully."}
+{"cat": "missing_end_punct", "text": "I have attached my resume and two writing samples for your review", "err": "review", "fix": "review."}
+{"cat": "missing_end_punct", "text": "The class starts at nine. Don't be late", "err": "late", "fix": "late."}
+{"cat": "missing_end_punct", "text": "She walked the dog around the lake", "err": "lake", "fix": "lake."}
+{"cat": "missing_end_punct", "text": "Let me know if you have any questions", "err": "questions", "fix": "questions."}
+{"cat": "quote_punct", "text": "He described the meeting as \"a waste of time\".", "err": "\".", "fix": ".\""}
+{"cat": "quote_punct", "text": "\"I'm leaving now\", she said.", "err": "\",", "fix": ",\""}
+{"cat": "quote_punct", "text": "My manager called the design \"clean and modern\".", "err": "\".", "fix": ".\""}
+{"cat": "quote_punct", "text": "\"We will launch in June\", the CEO announced.", "err": "\",", "fix": ",\""}
+{"cat": "quote_punct", "text": "The sign on the door read \"Closed for lunch\".", "err": "\".", "fix": ".\""}
+{"cat": "quote_punct", "text": "\"Please sit down\", the nurse said calmly.", "err": "\",", "fix": ",\""}
+{"cat": "quote_punct", "text": "She told me to \"take it easy\".", "err": "\".", "fix": ".\""}
+{"cat": "quote_punct", "text": "The reviewer called the sequel \"a bloated mess\", and I agreed.", "err": "\",", "fix": ",\""}
+{"cat": "quote_punct", "text": "Tasha texted me \"see you at eight\".", "err": "\".", "fix": ".\""}
+{"cat": "quote_punct", "text": "Everyone kept saying the app was \"easy to use\".", "err": "\".", "fix": ".\""}
+{"cat": "their_there", "text": "Their are three open seats near the front.", "err": "Their", "fix": "There"}
+{"cat": "their_there", "text": "The students left there backpacks in the hallway.", "err": "there", "fix": "their"}
+{"cat": "their_there", "text": "Put the boxes over their by the window.", "err": "their", "fix": "there"}
+{"cat": "their_there", "text": "I called the Hendersons, and there daughter answered.", "err": "there", "fix": "their"}
+{"cat": "their_there", "text": "Is their any chance we could move the deadline?", "err": "their", "fix": "there"}
+{"cat": "their_there", "text": "The customers love there new loyalty program.", "err": "there", "fix": "their"}
+{"cat": "their_there", "text": "We stopped at the bakery and stayed their for an hour.", "err": "their", "fix": "there"}
+{"cat": "their_there", "text": "Both teams did there best in the rain.", "err": "there", "fix": "their"}
+{"cat": "their_there", "text": "I think their going to announce the winners tomorrow.", "err": "their", "fix": "they're"}
+{"cat": "their_there", "text": "The engineers fixed the bug on there own.", "err": "there", "fix": "their"}
+{"cat": "your_youre", "text": "Your welcome to join us for dinner anytime.", "err": "Your", "fix": "You're"}
+{"cat": "your_youre", "text": "I hope you enjoy you're vacation in Greece.", "err": "you're", "fix": "your"}
+{"cat": "your_youre", "text": "Let me know if your free on Thursday afternoon.", "err": "your", "fix": "you're"}
+{"cat": "your_youre", "text": "Is this you're coat on the chair?", "err": "you're", "fix": "your"}
+{"cat": "your_youre", "text": "You're resume looks impressive, and we'd like to talk.", "err": "You're", "fix": "Your"}
+{"cat": "your_youre", "text": "I think your right about the deadline.", "err": "your", "fix": "you're"}
+{"cat": "your_youre", "text": "Don't forget to bring you're student ID to the exam.", "err": "you're", "fix": "your"}
+{"cat": "your_youre", "text": "Thank you for you're quick response to my message.", "err": "you're", "fix": "your"}
+{"cat": "your_youre", "text": "Please confirm that your available for a call at ten.", "err": "your", "fix": "you're"}
+{"cat": "your_youre", "text": "Call me when your done with the presentation.", "err": "your", "fix": "you're"}
+{"cat": "then_than", "text": "The new model is faster then the old one.", "err": "then", "fix": "than"}
+{"cat": "then_than", "text": "First we mixed the flour, than we added the eggs.", "err": "than", "fix": "then"}
+{"cat": "then_than", "text": "I would rather walk home then wait for the bus.", "err": "then", "fix": "than"}
+{"cat": "then_than", "text": "He earns more then his brother does.", "err": "then", "fix": "than"}
+{"cat": "then_than", "text": "If the test fails, than we will roll back the update.", "err": "than", "fix": "then"}
+{"cat": "then_than", "text": "Nothing is worse then a cold cup of coffee.", "err": "then", "fix": "than"}
+{"cat": "then_than", "text": "Our new office is bigger then I expected.", "err": "then", "fix": "than"}
+{"cat": "then_than", "text": "We watched the film, and than everybody went home.", "err": "than", "fix": "then"}
+{"cat": "then_than", "text": "There were fewer attendees then last year.", "err": "then", "fix": "than"}
+{"cat": "then_than", "text": "Add the sugar slowly and than stir for two minutes.", "err": "than", "fix": "then"}
+{"cat": "affect_effect", "text": "The new policy will effect every employee in the building.", "err": "effect", "fix": "affect"}
+{"cat": "affect_effect", "text": "The medication had a strong affect on her mood.", "err": "affect", "fix": "effect"}
+{"cat": "affect_effect", "text": "Rain should not effect our plans for Saturday.", "err": "effect", "fix": "affect"}
+{"cat": "affect_effect", "text": "Social media can seriously effect teenagers' self-esteem.", "err": "effect", "fix": "affect"}
+{"cat": "affect_effect", "text": "The professor asked us to describe the affect of inflation on small businesses.", "err": "affect", "fix": "effect"}
+{"cat": "affect_effect", "text": "Changing the font had little affect on the page count.", "err": "affect", "fix": "effect"}
+{"cat": "affect_effect", "text": "How will the budget cuts effect your department?", "err": "effect", "fix": "affect"}
+{"cat": "affect_effect", "text": "Her speech had a deep affect on the audience.", "err": "affect", "fix": "effect"}
+{"cat": "affect_effect", "text": "We need to understand how the new tax will effect families.", "err": "effect", "fix": "affect"}
+{"cat": "affect_effect", "text": "The side affects of the drug were mild.", "err": "affects", "fix": "effects"}
+{"cat": "to_too", "text": "Can I bring my sister to?", "err": "to?", "fix": "too?"}
+{"cat": "to_too", "text": "The soup is to salty for me.", "err": "to salty", "fix": "too salty"}
+{"cat": "to_too", "text": "She was to tired to finish the presentation.", "err": "to tired", "fix": "too tired"}
+{"cat": "to_too", "text": "It's way to early to call him.", "err": "to early", "fix": "too early"}
+{"cat": "to_too", "text": "I am going to the mall, and my brother is going to.", "err": "to.", "fix": "too."}
+{"cat": "to_too", "text": "Thanks for the gift, it was much to generous.", "err": "to generous", "fix": "too generous"}
+{"cat": "to_too", "text": "There were to many people in the elevator.", "err": "to many", "fix": "too many"}
+{"cat": "to_too", "text": "We drove to far without checking the map.", "err": "to far", "fix": "too far"}
+{"cat": "to_too", "text": "Your idea is great, and mine is good to.", "err": "to.", "fix": "too."}
+{"cat": "to_too", "text": "The deadline was to close for comfort.", "err": "to close", "fix": "too close"}
+{"cat": "a_an", "text": "She is an university student from Spain.", "err": "an university", "fix": "a university"}
+{"cat": "a_an", "text": "I need a umbrella for the trip.", "err": "a umbrella", "fix": "an umbrella"}
+{"cat": "a_an", "text": "He gave an unique presentation on bees.", "err": "an unique", "fix": "a unique"}
+{"cat": "a_an", "text": "That was a honest mistake.", "err": "a honest", "fix": "an honest"}
+{"cat": "a_an", "text": "Please bring a extra chair to the meeting.", "err": "a extra", "fix": "an extra"}
+{"cat": "a_an", "text": "It took me an hour to find an parking spot.", "err": "an parking", "fix": "a parking"}
+{"cat": "a_an", "text": "He is applying for a internship at the bank.", "err": "a internship", "fix": "an internship"}
+{"cat": "a_an", "text": "We saw an European film last night.", "err": "an European", "fix": "a European"}
+{"cat": "a_an", "text": "This is a excellent opportunity for our team.", "err": "a excellent", "fix": "an excellent"}
+{"cat": "a_an", "text": "My dad runs an one-person business.", "err": "an one-person", "fix": "a one-person"}
+{"cat": "loose_lose", "text": "Don't loose your keys at the airport.", "err": "loose", "fix": "lose"}
+{"cat": "loose_lose", "text": "I tied the rope too tight and now the knot is lose.", "err": "lose", "fix": "loose"}
+{"cat": "loose_lose", "text": "We can't afford to loose any more customers.", "err": "loose", "fix": "lose"}
+{"cat": "loose_lose", "text": "The screw came lose during the drive.", "err": "lose", "fix": "loose"}
+{"cat": "loose_lose", "text": "If you skip practice, you will loose your spot on the team.", "err": "loose", "fix": "lose"}
+{"cat": "loose_lose", "text": "She wore a lose sweater and jeans.", "err": "lose", "fix": "loose"}
+{"cat": "loose_lose", "text": "I hate to loose an argument.", "err": "loose", "fix": "lose"}
+{"cat": "loose_lose", "text": "The dog slipped out because the gate was lose.", "err": "lose", "fix": "loose"}
+{"cat": "loose_lose", "text": "Backing up your files helps you avoid loosing your work.", "err": "loosing", "fix": "losing"}
+{"cat": "loose_lose", "text": "Our team is going to loose if we don't improve our defense.", "err": "loose", "fix": "lose"}
+{"cat": "who_whom", "text": "To who should I address the letter?", "err": "who", "fix": "whom"}
+{"cat": "who_whom", "text": "The manager whom approved the request is on vacation.", "err": "whom", "fix": "who"}
+{"cat": "who_whom", "text": "Whom is responsible for the budget?", "err": "Whom", "fix": "Who"}
+{"cat": "who_whom", "text": "With who did you travel to Rome?", "err": "who", "fix": "whom"}
+{"cat": "who_whom", "text": "I spoke with a woman whom works at the clinic.", "err": "whom", "fix": "who"}
+{"cat": "who_whom", "text": "From who did you receive the package?", "err": "who", "fix": "whom"}
+{"cat": "who_whom", "text": "The candidate whom won the election thanked her supporters.", "err": "whom", "fix": "who"}
+{"cat": "who_whom", "text": "For who is this gift intended?", "err": "who", "fix": "whom"}
+{"cat": "who_whom", "text": "Whom wants to volunteer for the cleanup?", "err": "Whom", "fix": "Who"}
+{"cat": "who_whom", "text": "The person to who you should send the form is Ms. Duran.", "err": "who", "fix": "whom"}
+{"cat": "subject_verb", "text": "The list of items are on your desk.", "err": "are", "fix": "is"}
+{"cat": "subject_verb", "text": "Each of the students have a locker.", "err": "have", "fix": "has"}
+{"cat": "subject_verb", "text": "My brother and sister lives in Denver.", "err": "lives", "fix": "live"}
+{"cat": "subject_verb", "text": "There is several reasons we should wait.", "err": "There is", "fix": "There are"}
+{"cat": "subject_verb", "text": "The news were shocking to everyone.", "err": "were", "fix": "was"}
+{"cat": "subject_verb", "text": "She don't like spicy food.", "err": "don't", "fix": "doesn't"}
+{"cat": "subject_verb", "text": "The team of engineers are working late tonight.", "err": "are", "fix": "is"}
+{"cat": "subject_verb", "text": "Neither of the options seem practical.", "err": "seem", "fix": "seems"}
+{"cat": "subject_verb", "text": "The prices at that store is very high.", "err": "is very", "fix": "are very"}
+{"cat": "subject_verb", "text": "He go to the gym every morning before work.", "err": "go", "fix": "goes"}
+{"cat": "verb_tense", "text": "Yesterday I go to the dentist for a checkup.", "err": "go", "fix": "went"}
+{"cat": "verb_tense", "text": "She has wrote three novels since 2018.", "err": "wrote", "fix": "written"}
+{"cat": "verb_tense", "text": "Last week we discuss the new schedule.", "err": "discuss", "fix": "discussed"}
+{"cat": "verb_tense", "text": "They have went to the beach already.", "err": "went", "fix": "gone"}
+{"cat": "verb_tense", "text": "I seen that movie twice before.", "err": "seen", "fix": "have seen"}
+{"cat": "verb_tense", "text": "He buyed a new car last month.", "err": "buyed", "fix": "bought"}
+{"cat": "verb_tense", "text": "When I was young, I walk to school every day.", "err": "walk", "fix": "walked"}
+{"cat": "verb_tense", "text": "The package was deliver on Tuesday morning.", "err": "deliver", "fix": "delivered"}
+{"cat": "verb_tense", "text": "Tomorrow we will visited the museum.", "err": "visited", "fix": "visit"}
+{"cat": "verb_tense", "text": "She had already leave when I arrived.", "err": "leave", "fix": "left"}
+{"cat": "pronoun_case", "text": "Me and Jake are going to the game.", "err": "Me and Jake", "fix": "Jake and I"}
+{"cat": "pronoun_case", "text": "The invitation was sent to Priya and I.", "err": "and I", "fix": "and me"}
+{"cat": "pronoun_case", "text": "Between you and I, the project is behind.", "err": "and I", "fix": "and me"}
+{"cat": "pronoun_case", "text": "Her and her sister opened the bakery together.", "err": "Her", "fix": "She"}
+{"cat": "pronoun_case", "text": "Please give the tickets to him and I.", "err": "and I", "fix": "and me"}
+{"cat": "pronoun_case", "text": "Us volunteers worked all weekend.", "err": "Us", "fix": "We"}
+{"cat": "pronoun_case", "text": "Them and their friends arrived late.", "err": "Them", "fix": "They"}
+{"cat": "pronoun_case", "text": "The manager thanked Sam and I for the extra effort.", "err": "and I", "fix": "and me"}
+{"cat": "pronoun_case", "text": "My teacher gave my classmate and I extra time.", "err": "and I", "fix": "and me"}
+{"cat": "pronoun_case", "text": "Him and I used to play chess every Sunday.", "err": "Him", "fix": "He"}
+{"cat": "capitalization", "text": "i think we should meet on Tuesday.", "err": "i think", "fix": "I think"}
+{"cat": "capitalization", "text": "We flew to paris for our anniversary.", "err": "paris", "fix": "Paris"}
+{"cat": "capitalization", "text": "The meeting is on monday at ten.", "err": "monday", "fix": "Monday"}
+{"cat": "capitalization", "text": "My sister studies at the university of michigan.", "err": "university of michigan", "fix": "University of Michigan"}
+{"cat": "capitalization", "text": "Thanks for your help. we really appreciate it.", "err": "we really", "fix": "We really"}
+{"cat": "capitalization", "text": "She asked me to email Dr. patel about the results.", "err": "patel", "fix": "Patel"}
+{"cat": "capitalization", "text": "Our conference is held every July in chicago.", "err": "chicago", "fix": "Chicago"}
+{"cat": "capitalization", "text": "I watched the final episode of the show last night. it was incredible.", "err": "it was", "fix": "It was"}
+{"cat": "capitalization", "text": "Please contact our office manager, jennifer, for details.", "err": "jennifer", "fix": "Jennifer"}
+{"cat": "capitalization", "text": "Mid-term exams begin on the first of december.", "err": "december", "fix": "December"}
+{"cat": "run_on", "text": "The store closes at nine we should leave soon.", "err": "nine we", "fix": "nine. We"}
+{"cat": "run_on", "text": "I loved the hotel the staff were incredibly kind.", "err": "hotel the", "fix": "hotel. The"}
+{"cat": "run_on", "text": "Our flight was delayed we missed the connection in Denver.", "err": "delayed we", "fix": "delayed. We"}
+{"cat": "run_on", "text": "He studied all night he still failed the quiz.", "err": "night he", "fix": "night. He"}
+{"cat": "run_on", "text": "The coffee here is cheap the pastries are even better.", "err": "cheap the", "fix": "cheap. The"}
+{"cat": "run_on", "text": "Please restart your computer the update will install automatically.", "err": "computer the", "fix": "computer. The"}
+{"cat": "run_on", "text": "My phone died during the interview I had to borrow a charger.", "err": "interview I", "fix": "interview. I"}
+{"cat": "run_on", "text": "The garden looks wonderful in spring the tulips bloom first.", "err": "spring the", "fix": "spring. The"}
+{"cat": "run_on", "text": "I called twice nobody picked up.", "err": "twice nobody", "fix": "twice. Nobody"}
+{"cat": "run_on", "text": "She practiced the speech for a week it paid off on stage.", "err": "week it", "fix": "week. It"}

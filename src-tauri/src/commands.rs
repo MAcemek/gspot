@@ -202,6 +202,11 @@ fn claim_spot(shared: &Shared) -> Result<Option<(String, String, features::spotc
     Ok(Some((id, text, st.spot_cache.clone())))
 }
 
+fn grammar_cache() -> &'static std::sync::Mutex<features::grammarpass::Cache> {
+    static C: std::sync::OnceLock<std::sync::Mutex<features::grammarpass::Cache>> = std::sync::OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
 async fn spot_check_inner(app: &AppHandle, shared: &Shared, cfg: Option<&LlmConfig>, args: &Value) -> Result<Value, String> {
     // The writing goal steers the model and is part of the cache key.
     let goal = shared.lock().unwrap().settings.writing_goal.clone();
@@ -229,7 +234,21 @@ async fn spot_check_inner(app: &AppHandle, shared: &Shared, cfg: Option<&LlmConf
         }
     };
     let started = std::time::Instant::now();
-    let result = features::spotcheck::run(cfg, &text, &mut cache, &goal).await;
+    // The AI grammar pass runs beside the spot check (only with a model); its failure never fails the check.
+    let grammar = async {
+        let cfg = cfg?;
+        let mut gcache = grammar_cache().lock().unwrap().clone();
+        let r = features::grammarpass::run(cfg, &text, &mut gcache).await;
+        *grammar_cache().lock().unwrap() = gcache;
+        match r {
+            Ok(o) => Some(o),
+            Err(e) => {
+                log::warn!("grammar pass: {e}");
+                None
+            }
+        }
+    };
+    let (result, gram) = tokio::join!(features::spotcheck::run(cfg, &text, &mut cache, &goal), grammar);
     let mut st = shared.lock().unwrap();
     st.spot_running = false;
     st.spot_cache = cache;
@@ -239,6 +258,11 @@ async fn spot_check_inner(app: &AppHandle, shared: &Shared, cfg: Option<&LlmConf
         return Ok(json!({"stale": true, "checked": o.checked}));
     }
     let mut alerts = o.alerts.clone();
+    let grammar_n = gram.as_ref().map(|g| g.alerts.len()).unwrap_or(0);
+    if let Some(g) = gram {
+        // one card per span: rule/Harper alerts win over the model's (re-checked on every merge in visible_alerts)
+        alerts.extend(features::grammarpass::dedupe_against(g.alerts, &st.all_alerts));
+    }
     if let Some(d) = st.doc.as_ref() {
         if d.text != text {
             features::spotcheck::re_anchor(&mut alerts, &d.text);
@@ -252,7 +276,7 @@ async fn spot_check_inner(app: &AppHandle, shared: &Shared, cfg: Option<&LlmConf
     let _ = app.emit("host://alerts", &list);
     Ok(json!({
         "sentences": o.sentences, "checked": o.checked, "from_cache": o.from_cache, "batches": o.batches,
-        "skipped": o.skipped, "rejected": o.rejected, "rejections": o.rejections, "suggestions": o.alerts.len(), "ms": started.elapsed().as_millis() as u64,
+        "skipped": o.skipped, "rejected": o.rejected, "rejections": o.rejections, "suggestions": o.alerts.len(), "grammar": grammar_n, "ms": started.elapsed().as_millis() as u64,
     }))
 }
 
@@ -268,7 +292,7 @@ pub async fn spot_check_auto(app: AppHandle, shared: Shared, cfg: LlmConfig) {
 /// Tell the panel once if the last answer came from the local fallback.
 fn notify_fallback(app: &AppHandle) {
     if llm::take_fallback_notice() {
-        let _ = app.emit("ai://notice", "Your cloud AI hit its limit or could not be reached, so this answer came from your local AI.");
+        let _ = app.emit("ai://notice", "Your cloud AI could not be used (limit reached, key not accepted, or offline), so this answer came from your local AI. Settings → AI checks the key.");
     }
 }
 
@@ -580,9 +604,16 @@ pub fn permission_status() -> bool {
     crate::ax::is_trusted()
 }
 
+/// The hover card measured itself: remember the size and keep an open card on screen.
 #[tauri::command]
-pub fn set_card_rects(state: State<'_, Shared>, rects: Vec<crate::ax::Rect>) {
-    state.lock().unwrap().card_rects = rects;
+pub fn set_card_size(app: AppHandle, state: State<'_, Shared>, w: f64, h: f64) {
+    crate::host::resize_card(&app, &state, (w.clamp(200.0, 600.0), h.clamp(80.0, 600.0)));
+}
+
+/// Close the hover card now (after an action in it).
+#[tauri::command]
+pub fn hide_card(app: AppHandle, state: State<'_, Shared>) {
+    crate::host::close_card(&app, &state);
 }
 
 #[tauri::command]

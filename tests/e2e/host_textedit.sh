@@ -96,8 +96,8 @@ elif [ -n "$AID" ] && [ "$HX" != "None" ]; then
   if wait_for 'len(d["card_rects"]) > 0' 3; then pass "hover card opens"; else fail "hover card did not open"; fi
   # Walk the pointer onto the card itself (the path that used to leave the card stuck open).
   S2="$(probe /state)"
-  CX="$(echo "$S2" | jsonq 'round(d["geometry"]["origin_x"] + d["card_rects"][0]["x"] + d["card_rects"][0]["w"]/2, 1)')"
-  CY="$(echo "$S2" | jsonq 'round(d["geometry"]["origin_y"] + d["card_rects"][0]["y"] + d["card_rects"][0]["h"]/2, 1)')"
+  CX="$(echo "$S2" | jsonq 'round(d["card_rects"][0]["x"] + d["card_rects"][0]["w"]/2, 1)')"
+  CY="$(echo "$S2" | jsonq 'round(d["card_rects"][0]["y"] + d["card_rects"][0]["h"]/2, 1)')"
   move_pointer "$CX" "$CY" || echo "  ----  pointer did not settle on the card (someone moved the mouse?)"
   if wait_for 'd["geometry"]["over_card"] and len(d["card_rects"]) > 0' 3; then pass "pointer over the card keeps it open"; else fail "card did not stay open under the pointer: $(probe /state | jsonq 'd["geometry"]["over_card"], len(d["card_rects"])')"; fi
   AX="$(echo "$S" | jsonq 'round(d["geometry"]["origin_x"] + d["geometry"]["width"]/2, 1)')"

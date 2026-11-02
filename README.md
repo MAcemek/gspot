@@ -22,6 +22,15 @@ README follows further down.
 * **Offline spelling and grammar** with [Harper](https://writewithharper.com), plus smarter spelling picks (common
   words first, typo-aware: `comming` → coming, `adress` → address), stronger words for "very …", and your own
   dictionary (**Add to dictionary** on any spelling card).
+* **Punctuation and grammar rules** on top of Harper: dashes (`word - word` → em dash, `10-20` → en dash), commas
+  (introductory words, compound sentences, comma splices, direct address, "that"), quote punctuation, compound
+  adjectives (`full-time job`), its/it's, your/you're, then/than, who/whom, pronoun case ("between you and me"),
+  subject–verb agreement and tense. When you pause, an **AI grammar pass** catches run-ons and comma problems the
+  rules can't safely decide, with strict guards so it never rewrites your wording.
+* **Measured, not guessed**: on 270 test sentences it was never tuned on (one common error each), GSpot fixes 72% with
+  the rules alone and 84% with the AI pass, up from 31% in 0.4.0. See [docs/scoreboard.md](docs/scoreboard.md) and
+  [docs/scoreboard-holdout.md](docs/scoreboard-holdout.md); run it yourself with
+  `cargo run --release --example scoreboard -- --holdout [--ai]` in `src-tauri/`.
 * **Keyboard first**: **Ctrl+Shift+G** opens the panel from any app; put the cursor in an underlined word and press
   **Ctrl+Shift+Y** to apply the fix.
 * **Writing goals and readability**: pick Formal, Friendly, Confident or Concise and the AI sentence check steers

@@ -82,6 +82,8 @@ const SLOW_READ_MS: u128 = 40;
 const MAX_READ_GAP_MS: u128 = 1500;
 /// Alerts this far (UTF-16 units) beyond the visible text still get underlines, so short scrolls feel instant.
 const VISIBLE_MARGIN: usize = 200;
+/// How long the pointer may be off the word and the card before the card closes.
+const CARD_HIDE_DELAY: Duration = Duration::from_millis(450);
 const GBUTTON: f64 = 48.0;
 const GBUTTON_INSET: f64 = 14.0;
 
@@ -138,7 +140,7 @@ pub struct Geometry {
     pub height: f64,
     pub rects: Vec<UnderlineRect>,
     pub hovered: Option<String>,
-    /// The pointer is over the open hover card (hit-tested here, not in the webview).
+    /// The pointer is over the open hover card or the bridge to it (hit-tested here).
     #[serde(default)]
     pub over_card: bool,
 }
@@ -162,8 +164,16 @@ pub struct HostState {
     pub geometry: Geometry,
     pub settings: Settings,
     pub history: Vec<crate::history::Session>,
-    /// Extra hit rectangles (the hover card) reported by the overlay UI, in overlay-local coords.
-    pub card_rects: Vec<Rect>,
+    /// Alert id the hover card is open for.
+    pub card_open: Option<String>,
+    /// Screen rect (logical) of the underline the card opened on.
+    pub card_anchor: Rect,
+    /// Screen rect (logical) where the card window is.
+    pub card_rect: Rect,
+    /// Size the card UI last reported; zero until then (see `card_dims`).
+    pub card_size: (f64, f64),
+    /// When the pointer left the word and the card; the card closes once this passes.
+    pub card_hide_at: Option<Instant>,
     pub last_text_hash: u64,
     pub lint_pending_since: Option<Instant>,
     pub lint_dirty: bool,
@@ -181,7 +191,19 @@ impl HostState {
     /// sentences, minus everything dismissed. Word-level alerts come first so
     /// a hover over a word inside a flagged sentence opens the word's card.
     pub fn visible_alerts(&self) -> Vec<Alert> {
-        crate::features::spotcheck::merge_visible(&self.all_alerts, &self.spot_alerts, |h| self.settings.dismissed.contains(&h))
+        let (ai, spot): (Vec<Alert>, Vec<Alert>) = self.spot_alerts.iter().cloned().partition(|a| a.kind == crate::features::grammarpass::KIND);
+        let mut v = crate::features::spotcheck::merge_visible(&self.all_alerts, &spot, |h| self.settings.dismissed.contains(&h));
+        // AI grammar fixes: the rule/Harper alert on the same span wins.
+        v.extend(crate::features::grammarpass::dedupe_against(ai, &self.all_alerts).into_iter().filter(|a| !self.settings.dismissed.contains(&a.stable_hash)));
+        // The sentence being typed has no period yet: don't nag until the caret moves on.
+        let caret = self.doc.as_ref().map(|d| d.sel_start);
+        v.retain(|a| !(a.title == crate::rules::END_PUNCT_TITLE && caret == Some(a.u16_end)));
+        v
+    }
+
+    /// Card window size: what the UI reported, else the initial size.
+    pub fn card_dims(&self) -> (f64, f64) {
+        if self.card_size.0 >= 1.0 && self.card_size.1 >= 1.0 { self.card_size } else { (crate::overlay::CARD_W, crate::overlay::CARD_H) }
     }
 }
 
@@ -246,48 +268,147 @@ fn rect_close(a: &Option<Rect>, b: &Option<Rect>) -> bool {
     }
 }
 
-/// Which underline (and whether the card) the pointer is over; local coords relative to the geometry origin.
-fn hit_test(g: &Geometry, card_rects: &[Rect], mx: f64, my: f64) -> (Option<String>, bool) {
+/// The underline the pointer is over; `mx`/`my` are screen coords, the rects are relative to the geometry origin.
+fn hover_id(g: &Geometry, mx: f64, my: f64) -> Option<String> {
     let lx = mx - g.origin_x;
     let ly = my - g.origin_y;
-    let mut hovered = None;
-    for r in &g.rects {
-        if lx >= r.x - 2.0 && lx <= r.x + r.w + 2.0 && ly >= r.y - 2.0 && ly <= r.y + r.h + 4.0 {
-            hovered = Some(r.id.clone());
-            break;
-        }
-    }
-    let over_card = card_rects.iter().any(|c| c.contains(lx, ly));
-    (hovered, over_card)
+    g.rects.iter().find(|r| lx >= r.x - 2.0 && lx <= r.x + r.w + 2.0 && ly >= r.y - 2.0 && ly <= r.y + r.h + 4.0).map(|r| r.id.clone())
 }
 
-/// Fast pointer loop: hover state is hit-tested every 30 ms against the last geometry,
-/// independent of how long a slow accessibility tick takes.
+/// Screen rect of an underline.
+fn screen_rect(g: &Geometry, id: &str) -> Option<Rect> {
+    g.rects.iter().find(|r| r.id == id).map(|r| Rect { x: g.origin_x + r.x, y: g.origin_y + r.y, w: r.w, h: r.h })
+}
+
+/// The pointer is on the card (with a 10 px skirt) or in the bridge between the word and the card.
+fn over_card_area(anchor: Rect, card: Rect, mx: f64, my: f64) -> bool {
+    let skirt = Rect { x: card.x - 10.0, y: card.y - 10.0, w: card.w + 20.0, h: card.h + 20.0 };
+    let (x0, y0) = (anchor.x.min(card.x), anchor.y.min(card.y));
+    let (x1, y1) = ((anchor.x + anchor.w).max(card.x + card.w), (anchor.y + anchor.h).max(card.y + card.h));
+    let bridge = Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    skirt.contains(mx, my) || bridge.contains(mx, my)
+}
+
+/// What the hover pass decided for the card; carried out once the lock is released.
+enum CardAct {
+    Open(String, Rect, (f64, f64)),
+    Close,
+}
+
+/// Put the card window next to `anchor` (on the monitor holding it) and record where it went.
+fn place_card_window(app: &AppHandle, shared: &Shared, anchor: Rect, size: (f64, f64)) {
+    let screen = crate::overlay::screen_at(app, anchor.x + anchor.w / 2.0, anchor.y + anchor.h / 2.0);
+    let (x, y) = crate::overlay::place_card(anchor, size, screen);
+    if let Ok(mut st) = shared.lock() {
+        if st.card_open.is_some() {
+            st.card_rect = Rect { x, y, w: size.0, h: size.1 };
+        }
+    }
+    if let Some(w) = app.get_webview_window("card") {
+        let _ = w.set_size(tauri::Size::Logical(tauri::LogicalSize::new(size.0, size.1)));
+        let _ = w.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
+    }
+}
+
+fn open_card(app: &AppHandle, shared: &Shared, id: &str, anchor: Rect, size: (f64, f64)) {
+    place_card_window(app, shared, anchor, size);
+    let _ = app.emit_to("card", "card://show", serde_json::json!({ "id": id }));
+    if let Some(w) = app.get_webview_window("card") {
+        let _ = w.show();
+    }
+}
+
+/// Hide the hover card now and forget it (idempotent).
+pub fn close_card(app: &AppHandle, shared: &Shared) {
+    let geometry = {
+        let Ok(mut st) = shared.lock() else { return };
+        let was_open = st.card_open.take().is_some();
+        st.card_hide_at = None;
+        let hovered = st.geometry.hovered.take().is_some();
+        let over = std::mem::replace(&mut st.geometry.over_card, false);
+        (was_open || hovered || over).then(|| st.geometry.clone())
+    };
+    if let Some(w) = app.get_webview_window("card") {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+        }
+    }
+    let _ = app.emit_to("card", "card://hide", ());
+    if let Some(g) = geometry {
+        let _ = app.emit_to("underlines", "host://geometry", &g);
+    }
+}
+
+/// The card reported a new size: store it and, if it is open, keep it on screen.
+pub fn resize_card(app: &AppHandle, shared: &Shared, size: (f64, f64)) {
+    let anchor = {
+        let Ok(mut st) = shared.lock() else { return };
+        st.card_size = size;
+        st.card_open.is_some().then_some(st.card_anchor)
+    };
+    if let Some(anchor) = anchor {
+        place_card_window(app, shared, anchor, size);
+    }
+}
+
+/// Fast pointer loop, every 30 ms against the last geometry, independent of how long a slow
+/// accessibility tick takes. It also owns the hover card: opens it on a word, keeps it while the
+/// pointer is on the word, the card or the bridge between them, and closes it after a short grace.
 fn spawn_hover(app: AppHandle, shared: Shared) {
     std::thread::Builder::new()
         .name("hover-loop".into())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_millis(30));
             let Some((mx, my)) = ax::mouse_location_top_left() else { continue };
-            let changed = {
-                let Ok(mut st) = shared.lock() else { continue };
-                if st.geometry.rects.is_empty() && !st.geometry.over_card && st.geometry.hovered.is_none() {
+            let (act, changed) = {
+                let Ok(mut guard) = shared.lock() else { continue };
+                let st = &mut *guard;
+                if st.geometry.rects.is_empty() && st.card_open.is_none() {
                     continue;
                 }
-                let hit = hit_test(&st.geometry, &st.card_rects, mx, my);
-                if hit != (st.geometry.hovered.clone(), st.geometry.over_card) {
-                    st.geometry.hovered = hit.0.clone();
-                    st.geometry.over_card = hit.1;
-                    Some((st.geometry.clone(), hit.0.is_some() || hit.1))
+                let open = st.card_open.clone();
+                // On the card itself an underline beneath it does not count.
+                let hovered = if open.is_some() && st.card_rect.contains(mx, my) { None } else { hover_id(&st.geometry, mx, my) };
+                let over_card = open.is_some() && over_card_area(st.card_anchor, st.card_rect, mx, my);
+                let gone = open.as_ref().map(|id| !st.geometry.rects.iter().any(|r| &r.id == id)).unwrap_or(false);
+                let mut act = None;
+                if gone {
+                    act = Some(CardAct::Close);
+                } else if let Some(id) = hovered.clone().filter(|id| open.as_ref() != Some(id)) {
+                    if let Some(anchor) = screen_rect(&st.geometry, &id) {
+                        st.card_open = Some(id.clone());
+                        st.card_anchor = anchor;
+                        st.card_rect = anchor;
+                        st.card_hide_at = None;
+                        act = Some(CardAct::Open(id, anchor, st.card_dims()));
+                    }
+                } else if hovered.is_some() || over_card {
+                    st.card_hide_at = None;
+                } else if open.is_some() {
+                    match st.card_hide_at {
+                        None => st.card_hide_at = Some(Instant::now() + CARD_HIDE_DELAY),
+                        Some(t) if Instant::now() >= t => act = Some(CardAct::Close),
+                        Some(_) => {}
+                    }
+                }
+                // The open word's underline is the highlighted one.
+                let (want, over) = (st.card_open.clone(), over_card && st.card_open.is_some());
+                let changed = if st.geometry.hovered != want || st.geometry.over_card != over {
+                    st.geometry.hovered = want;
+                    st.geometry.over_card = over;
+                    Some(st.geometry.clone())
                 } else {
                     None
-                }
+                };
+                (act, changed)
             };
-            if let Some((geometry, interactive)) = changed {
+            if let Some(geometry) = changed {
                 let _ = app.emit_to("underlines", "host://geometry", &geometry);
-                if let Some(w) = app.get_webview_window("underlines") {
-                    let _ = w.set_ignore_cursor_events(!interactive);
-                }
+            }
+            match act {
+                Some(CardAct::Open(id, anchor, size)) => open_card(&app, &shared, &id, anchor, size),
+                Some(CardAct::Close) => close_card(&app, &shared),
+                None => {}
             }
         })
         .expect("hover loop thread");
@@ -446,6 +567,14 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
                 }
                 st.doc = Some(doc);
                 st.status.has_doc = true;
+                // The caret left (or reached) a sentence missing its period: show or hide that card.
+                if sel_event.is_some() && alerts_event.is_none() && st.all_alerts.iter().any(|a| a.title == crate::rules::END_PUNCT_TITLE) {
+                    let v = st.visible_alerts();
+                    if v.len() != st.alerts.len() {
+                        st.alerts = v;
+                        alerts_event = Some(st.alerts.clone());
+                    }
+                }
             }
         } else if st.doc.is_some() {
             // No editable element in front. Keep the last document for the panel.
@@ -614,7 +743,6 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
             // Hover state comes from the hover thread; carry it over while the id still exists.
             geometry.hovered = prev_geom.hovered.filter(|id| geometry.rects.iter().any(|r| &r.id == id));
             geometry.over_card = prev_geom.over_card;
-            let over_card = geometry.over_card;
             let sig = serde_json::to_string(&geometry).unwrap_or_default();
             if sig != *last_geom_sig {
                 *last_geom_sig = sig;
@@ -625,7 +753,6 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
                 if big_enough && show_underlines {
                     let _ = w.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(vis.x, vis.y)));
                     let _ = w.set_size(tauri::Size::Logical(tauri::LogicalSize::new(vis.w.max(1.0), vis.h.max(1.0))));
-                    let _ = w.set_ignore_cursor_events(!(geometry.hovered.is_some() || over_card));
                     if !w.is_visible().unwrap_or(false) {
                         let _ = w.show();
                     }
@@ -647,6 +774,9 @@ fn tick(app: &AppHandle, shared: &Shared, system: &AXElement, engine: &mut Engin
             }
         }
         _ => {
+            if shared.lock().map(|s| s.card_open.is_some()).unwrap_or(false) {
+                close_card(app, shared);
+            }
             for label in ["underlines", "gbutton"] {
                 if let Some(w) = app.get_webview_window(label) {
                     if w.is_visible().unwrap_or(false) {
@@ -771,18 +901,23 @@ mod tests {
     }
 
     #[test]
-    fn hit_test_finds_underlines_and_the_card() {
+    fn hover_finds_underlines_and_the_card_area() {
         let g = Geometry {
             origin_x: 100.0,
             origin_y: 200.0,
             rects: vec![UnderlineRect { id: "a".into(), x: 10.0, y: 10.0, w: 40.0, h: 12.0, color: String::new(), category: String::new(), sentence: false }],
             ..Default::default()
         };
-        assert_eq!(hit_test(&g, &[], 115.0, 215.0), (Some("a".to_string()), false));
-        assert_eq!(hit_test(&g, &[], 300.0, 300.0), (None, false));
-        // Card rect in local coords: (200..250, 200..250); pointer at local (210, 210).
-        let card = Rect { x: 200.0, y: 200.0, w: 50.0, h: 50.0 };
-        assert_eq!(hit_test(&g, &[card], 310.0, 410.0), (None, true));
-        assert_eq!(hit_test(&g, &[card], 115.0, 215.0).1, false);
+        assert_eq!(hover_id(&g, 115.0, 215.0).as_deref(), Some("a"));
+        assert_eq!(hover_id(&g, 300.0, 300.0), None);
+        let anchor = screen_rect(&g, "a").unwrap();
+        assert_eq!(anchor, Rect { x: 110.0, y: 210.0, w: 40.0, h: 12.0 });
+        // Card below the word, 340x220 at (110, 228).
+        let card = Rect { x: 110.0, y: 228.0, w: 340.0, h: 220.0 };
+        assert!(over_card_area(anchor, card, 300.0, 300.0), "on the card");
+        assert!(over_card_area(anchor, card, 455.0, 300.0), "inside the 10 px skirt");
+        assert!(over_card_area(anchor, card, 130.0, 224.0), "in the bridge between word and card");
+        assert!(!over_card_area(anchor, card, 470.0, 300.0), "past the skirt");
+        assert!(!over_card_area(anchor, card, 300.0, 100.0), "away");
     }
 }

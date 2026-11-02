@@ -19,7 +19,7 @@ use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW,
 use windows::Win32::UI::Accessibility::*;
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetAncestor, GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindowThreadProcessId, IsWindowVisible, SetCursorPos,
+    EnumChildWindows, EnumWindows, GetAncestor, GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindowThreadProcessId, IsWindowVisible, SetCursorPos,
     SetForegroundWindow, GA_ROOT, SM_CYSCREEN,
 };
 
@@ -474,13 +474,42 @@ pub fn frontmost_app() -> Option<(i32, String, String)> {
         if pid == std::process::id() {
             return Some((pid as i32, crate::host::OUR_BUNDLE.into(), "GSpot".into()));
         }
-        let path = process_image(pid).unwrap_or_default();
+        let mut path = process_image(pid).unwrap_or_default();
+        // Store apps (Mail, Sticky Notes, WhatsApp...) live inside a frame owned by
+        // ApplicationFrameHost: name the app inside it, so skipping one skips only that app.
+        // The pid stays the frame's: that is the window to bring to the front.
+        if path.to_lowercase().ends_with("\\applicationframehost.exe") {
+            if let Some(inner) = framed_app_pid(hwnd, pid).and_then(process_image) {
+                path = inner;
+            }
+        }
         let file = path.rsplit(['\\', '/']).next().unwrap_or("").to_string();
         let stem = file.strip_suffix(".exe").or_else(|| file.strip_suffix(".EXE")).unwrap_or(&file);
         let mut c = stem.chars();
         let name = c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
         Some((pid as i32, file.to_lowercase(), name))
     }
+}
+
+/// The process of the app window hosted inside an ApplicationFrameHost frame.
+unsafe fn framed_app_pid(frame: HWND, frame_pid: u32) -> Option<u32> {
+    struct Find {
+        frame_pid: u32,
+        found: u32,
+    }
+    unsafe extern "system" fn each(hwnd: HWND, lp: LPARAM) -> BOOL {
+        let f = &mut *(lp.0 as *mut Find);
+        let mut p = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut p));
+        if p != 0 && p != f.frame_pid {
+            f.found = p;
+            return BOOL(0);
+        }
+        BOOL(1)
+    }
+    let mut f = Find { frame_pid, found: 0 };
+    let _ = EnumChildWindows(Some(frame), Some(each), LPARAM(&mut f as *mut Find as isize));
+    (f.found != 0).then_some(f.found)
 }
 
 /// Bring a process's main window to the front (needed before a clipboard paste).

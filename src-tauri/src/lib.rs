@@ -14,6 +14,7 @@ pub mod host;
 pub mod llm;
 pub mod overlay;
 pub mod publik;
+pub mod rules;
 pub mod score;
 pub mod settings;
 pub mod shortcut;
@@ -43,6 +44,9 @@ pub fn run() {
     let dock_side = shared.lock().unwrap().settings.dock_side.clone();
 
     tauri::Builder::default()
+        // One GSpot at a time: a second launch (Start menu while the login copy runs)
+        // would draw its own underlines and ignore settings changed in the first.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| commands::open_panel_inner(app, "review", true)))
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(shortcut::plugin())
@@ -110,7 +114,8 @@ pub fn run() {
             commands::tuck_panel,
             commands::permission_prompt,
             commands::permission_status,
-            commands::set_card_rects,
+            commands::set_card_size,
+            commands::hide_card,
             commands::open_url,
             commands::quit_app,
             commands::ui_ready,

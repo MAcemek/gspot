@@ -66,7 +66,9 @@ pub struct Engine {
 
 impl Engine {
     pub fn new() -> Self {
-        let group = LintGroup::new_curated(FstDictionary::curated(), Dialect::American);
+        let mut group = LintGroup::new_curated(FstDictionary::curated(), Dialect::American);
+        // Fires on plain correct clauses ("The deadline is next Friday, and we are...").
+        group.config.set_rule_enabled("MissingPreposition", false);
         Engine { group, para_cache: HashMap::new(), paragraphs_linted: 0 }
     }
 
@@ -128,6 +130,41 @@ impl Engine {
                 continue;
             }
             let original: String = source[start..end].iter().collect();
+            // Harper second-guesses a correct "whom" and reads the name "Sam" as the acronym SAM.
+            if original.eq_ignore_ascii_case("whom") && lint.message.contains("object of a verb") {
+                continue;
+            }
+            if lint.message.contains("canonical spelling is all-caps") && original.chars().skip(1).all(|c| c.is_lowercase()) {
+                continue;
+            }
+            // "10 a.m.": the "a" is an abbreviation, not an article.
+            if matches!(original.as_str(), "a" | "A" | "an") && source.get(end..end + 3).map_or(false, |s| s.iter().collect::<String>().eq_ignore_ascii_case(".m.")) {
+                continue;
+            }
+            let before: String = source[start.saturating_sub(8)..start].iter().collect();
+            // "555-0142" is a phone number, not a range.
+            if lint.message.contains("ranges of numbers") {
+                let digits = |it: &mut dyn Iterator<Item = &char>| it.take_while(|c| c.is_ascii_digit()).count();
+                let left = digits(&mut source[..start].iter().rev());
+                let right_start = source.get(end).copied();
+                let right = digits(&mut source[end..].iter());
+                if (left == 3 && right == 4) || right_start == Some('0') {
+                    continue;
+                }
+            }
+            // "e.g., fruit and nuts" is an example, not a list missing its Oxford comma.
+            if lint.message.contains("Oxford comma") && (before.contains("e.g.") || before.contains("i.e.")) {
+                continue;
+            }
+            if matches!(lint.lint_kind, LintKind::Spelling | LintKind::Typo) {
+                // A name after a title ("Ms. Okafor") is the person's name.
+                let titled = ["Mr. ", "Ms. ", "Mrs. ", "Dr. ", "Prof. ", "Mx. "].iter().any(|t| before.ends_with(t));
+                // "cancelled"/"cancelling" are accepted in American English too.
+                let accepted = matches!(original.to_lowercase().as_str(), "cancelled" | "cancelling");
+                if (titled && original.chars().next().is_some_and(|c| c.is_uppercase())) || accepted {
+                    continue;
+                }
+            }
             let mut suggestions: Vec<String> = Vec::new();
             for s in &lint.suggestions {
                 match s {
@@ -192,6 +229,19 @@ impl Engine {
 
 /// Rules that look at the whole text, then the spelling-wins and overlap clean-up.
 fn finish(mut out: Vec<Alert>, text: &str, map: &TextMap) -> Vec<Alert> {
+    // Our deterministic punctuation/grammar rules win over a Harper correctness alert on the
+    // same words (one card per span); a Harper spelling alert survives unless it sits inside ours.
+    let mine = crate::rules::rule_alerts(text, map);
+    if !mine.is_empty() {
+        out.retain(|a| {
+            if a.category != Category::Correctness {
+                return true;
+            }
+            let spelling = a.kind == "Spelling" || a.kind == "Typo";
+            !mine.iter().any(|m| a.start < m.end && m.start < a.end && (!spelling || (a.start >= m.start && a.end <= m.end)))
+        });
+        out.extend(mine);
+    }
     out.extend(delivery_rules(text, map));
     out.extend(very_rules(text, map));
     out.extend(engagement_rules(text, map));
@@ -491,7 +541,7 @@ fn engagement_rules(text: &str, map: &TextMap) -> Vec<Alert> {
 }
 
 /// byte offset → char index table (len = bytes + 1)
-fn char_prefix(text: &str) -> Vec<usize> {
+pub(crate) fn char_prefix(text: &str) -> Vec<usize> {
     let mut v = vec![0usize; text.len() + 1];
     let mut ci = 0;
     let mut last = 0;
@@ -571,6 +621,25 @@ mod tests {
         // Unchanged text costs nothing.
         inc.check_incremental(&edited);
         assert_eq!(inc.paragraphs_linted - first, 1);
+    }
+
+    #[test]
+    fn correct_phone_numbers_examples_names_and_cancelled_are_left_alone() {
+        let mut e = Engine::new();
+        for t in [
+            "Call me at 555-0142 if the delivery does not arrive by noon.",
+            "Bring snacks, e.g., fruit and nuts, for the hike.",
+            "Please thank Ms. Okafor for her patience.",
+            "The flight was cancelled, but the airline offered a full refund.",
+            "Jake and I are going to the game tonight.",
+        ] {
+            let found: Vec<_> = e.check(t).into_iter().filter(|a| a.category == Category::Correctness || a.kind == "Style").map(|a| a.original).collect();
+            assert!(found.is_empty(), "{t}: {found:?}");
+        }
+        let t = "Jake and I is going to the game.";
+        assert!(e.check(t).iter().any(|a| a.original == "is" && a.suggestions.first().map(String::as_str) == Some("are")), "{t}");
+        assert!(e.check("Pages 10-20 cover the setup.").iter().any(|a| a.suggestions.iter().any(|s| s.contains("–"))), "a real range is still flagged");
+        assert!(e.check("I spoke with Dr. Smiht about the results.").iter().all(|a| a.original != "Smiht"), "a titled name is a name");
     }
 
     #[test]

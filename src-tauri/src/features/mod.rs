@@ -2,6 +2,7 @@
 
 pub mod ceo;
 pub mod detector;
+pub mod grammarpass;
 pub mod plagiarism;
 pub mod prompts;
 pub mod spotcheck;

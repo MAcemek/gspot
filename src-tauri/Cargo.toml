@@ -1,6 +1,6 @@
 [package]
 name = "grammarlama"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.80"
 description = "GSpot — a local-first Grammarly-style writing assistant for macOS"
@@ -36,6 +36,7 @@ url = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"

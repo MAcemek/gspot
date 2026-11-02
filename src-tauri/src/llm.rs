@@ -29,10 +29,11 @@ pub fn take_fallback_notice() -> bool {
     FELL_BACK.swap(false, Ordering::Relaxed)
 }
 
-/// Errors worth retrying locally: rate limits, quota, and unreachable hosts.
+/// Errors worth retrying locally: rate limits, quota, unreachable hosts, and a key
+/// the provider no longer accepts (the panel says so, see `notify_fallback`).
 pub fn is_fallback_worthy(err: &str) -> bool {
     let e = err.to_lowercase();
-    ["429", "rate limit", "rate_limit", "ratelimit", "too many requests", "quota", "resource_exhausted", "error sending request", "connection refused", "dns error", "timed out", "operation timed out"].iter().any(|k| e.contains(k))
+    ["429", "rate limit", "rate_limit", "ratelimit", "too many requests", "quota", "resource_exhausted", "error sending request", "connection refused", "dns error", "timed out", "operation timed out", "401", "403", "unauthorized", "invalid api key"].iter().any(|k| e.contains(k))
 }
 
 /// Best installed Ollama model: preferred list first, then any non-embedding one.
@@ -593,7 +594,7 @@ mod tests {
     fn fallback_worthy_errors() {
         assert!(is_fallback_worthy("API error 429 Too Many Requests: Rate limit reached"));
         assert!(is_fallback_worthy("error sending request for url"));
-        assert!(!is_fallback_worthy("API error 401: invalid api key"));
+        assert!(is_fallback_worthy("API error 401 Unauthorized: Invalid API Key"));
         assert!(!is_fallback_worthy("The model had no options for this one."));
     }
 

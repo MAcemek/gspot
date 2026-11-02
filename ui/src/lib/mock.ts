@@ -97,7 +97,7 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
       return { too_short: true };
     }
     case "accept_alert": return { method: "ax", new_text: TEXT };
-    case "ui_ready": case "ui_log": case "set_card_rects": case "open_url": case "dismiss_alert": case "open_panel": case "hide_panel": case "tuck_panel": return;
+    case "ui_ready": case "ui_log": case "set_card_size": case "hide_card": case "open_url": case "dismiss_alert": case "open_panel": case "hide_panel": case "tuck_panel": return;
     case "permission_status": case "permission_prompt": return true;
     default: return {};
   }
