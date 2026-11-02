@@ -2953,7 +2953,9 @@ mod tests {
         }
         let ms = t.elapsed().as_secs_f64() * 1000.0 / 5.0;
         println!("RULES 10k words: {ms:.2} ms ({:.3} ms per 1000 words)", ms / 10.0);
-        assert!(ms / 10.0 < 2.0, "{ms} ms for 10k words");
+        // The budget is for the optimized app; an unoptimized test build (CI) is many times slower.
+        let budget = if cfg!(debug_assertions) { 40.0 } else { 2.0 };
+        assert!(ms / 10.0 < budget, "{ms} ms for 10k words");
     }
 
     #[test]
